@@ -59,7 +59,7 @@ additive change.
 3. Move callers from `(user, pass)` to the credential object; remove the wrapper.
 4. Credentials page: type selector, key paste/upload, passphrase, public key and fingerprint display, passphrase-less
    key warning. Pickers show the credential type.
-5. Optional: generate key pair, show public key and RouterOS import command.
+5. Future (not this branch): generate a key pair in the app, show the public key and RouterOS import command.
 6. Documentation, English/Italian strings (use `T()` / `lang_en`), manual test against a RouterOS device.
 
 ## Call sites to migrate (line numbers on `main`, approximate)
@@ -75,8 +75,8 @@ override creds (~5889), credential reveal (~5960), RouterOS check/install/downlo
 - Regression: password credentials produce the same `connect()` arguments as before.
 - Manual: key auth against a RouterOS device; backup, upload, refresh.
 
-## Open questions
+## Decisions
 
-- Should the "reveal password" action (~5960) ever reveal a private key? Proposed: no.
-- Should key-based sets be allowed as the per-device legacy credential? Proposed: no, named sets only.
-- Is generating key pairs in the app wanted in phase 1, or paste/upload only?
+- **Reveal never shows a private key.** The reveal action returns no key material for `ssh_key` sets. If a display is ever needed, show the fingerprint only.
+- **Key-based sets can be device specific.** A key set is a normal named set, so it can be assigned to a single device (`credential_id`) as well as to a site. The legacy per-device `ssh_user` / `ssh_pass_enc` fields stay password-only.
+- **Phase 1 is paste/upload only.** No key-pair generation in the app, so phase 5 is dropped from this branch and moved to future work.
