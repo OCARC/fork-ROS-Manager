@@ -59,6 +59,7 @@ import urllib.parse
 import paramiko
 import cgi
 import io as _io
+from html import escape as _esc
 from http.server import ThreadingHTTPServer
 try:
     import pyotp, segno
@@ -771,6 +772,18 @@ _T_EN: dict = {
     "Backup Manager": "Backup Manager",
     "Site Manager": "Site Manager",
     "Credential Manager": "Credential Manager",
+    "Chiave SSH": "SSH key",
+    "Chiave privata": "Private key",
+    "Chiave pubblica": "Public key",
+    "Impronta chiave": "Key fingerprint",
+    "Passphrase (opzionale)": "Passphrase (optional)",
+    "Incolla o carica una chiave privata.": "Paste or upload a private key.",
+    "File troppo grande per una chiave privata.": "File is too large to be a private key.",
+    "La chiave privata non viene mai mostrata.": "The private key is never displayed.",
+    "Importa la chiave pubblica sul router: /user ssh-keys import public-key-file=... user=...":
+        "Import the public key on the router: /user ssh-keys import public-key-file=... user=...",
+    "Una chiave senza passphrase e protetta solo dalla cifratura di questa applicazione.":
+        "A key without a passphrase is protected only by this application's encryption.",
 }
 
 def T(s: str) -> str:
@@ -2331,6 +2344,12 @@ def _cred_set_public(cs: dict) -> dict:
     if pub["type"] == CRED_TYPE_SSH_KEY:
         pub.update({k: cs.get(k, "") for k in ("key_type", "fingerprint", "public_key")})
     return pub
+
+def _cred_label(cs: dict) -> str:
+    """Name shown in credential pickers; marks key sets so they are easy to tell apart."""
+    if cs.get("type", CRED_TYPE_PASSWORD) == CRED_TYPE_SSH_KEY:
+        return f'{cs["name"]} (SSH key)'
+    return cs["name"]
 
 def cred_set_remove(cid):
     with CRED_SETS_LOCK:
@@ -4940,7 +4959,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/creds":
             # Return cred sets without passwords
-            safe = [{"id": c["id"], "name": c["name"]} for c in CRED_SETS]
+            safe = [{"id": c["id"], "name": _cred_label(c)} for c in CRED_SETS]
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.send_header("Cache-Control", "no-store")
@@ -5698,7 +5717,7 @@ class Handler(BaseHTTPRequestHandler):
                       "/api/sites/add", "/api/sites/update", "/api/sites/remove",
                       "/api/sites/assign_bulk", "/api/device/topology", "/api/device/link_type",
                       "/api/backup/run", "/api/backup/config", "/api/backup/delete",
-                      "/api/creds/add", "/api/creds/update", "/api/creds/remove",
+                      "/api/creds/add", "/api/creds/update", "/api/creds/remove", "/api/creds/reveal",
                       "/api/sites/set_creds"}
         if path in JSON_PATHS:
             raw  = self.rfile.read(length) if length > 0 else b""
@@ -9878,7 +9897,7 @@ html,body{{min-height:100%;margin:0;background:var(--bg);}}
         no_backup_js    = json.dumps(no_backup_ips)
         stale_backup_js = json.dumps(stale_ips)
         # Cred sets for the credential assignment UI (name only, no credentials)
-        cred_sets_js    = json.dumps([{"id": c["id"], "name": c["name"]} for c in CRED_SETS])
+        cred_sets_js    = json.dumps([{"id": c["id"], "name": _cred_label(c)} for c in CRED_SETS])
 
         # ── Server-side file list ──────────────────────────────────────
         bk_files = backup_list_files()
@@ -10011,7 +10030,7 @@ html,body{{min-height:100%;margin:0;background:var(--bg);}}
       </div>
       <select id="bkCredPicker" onchange="applyBkCred(this.value)" style="width:100%;box-sizing:border-box;font-size:12px;margin-bottom:4px;">
         <option value="">— Automatico: usa le credenziali del sito o del router —</option>
-        {chr(10).join(f'        <option value="{c["id"]}">{c["name"]}</option>' for c in CRED_SETS)}
+        {chr(10).join(f'        <option value="{c["id"]}">{_esc(_cred_label(c))}</option>' for c in CRED_SETS)}
       </select>
       {'<div style="margin-bottom:4px;font-size:10px;color:var(--text3);font-style:italic;">Nessun set credenziali configurato. <a href="/credentials" style="color:var(--accent);">Creane uno nel Credential Manager →</a></div>' if not CRED_SETS else ''}
       <div id="bkCredInfo" style="margin-bottom:16px;font-size:11px;min-height:14px;padding:6px 10px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);display:none;"></div>
@@ -10589,12 +10608,20 @@ onTargetChange();
             # Show first 2 chars of username (decrypted server-side), rest hidden
             uname_full    = _cred_set_username(c)
             uname_preview = (uname_full[:2] + "••••") if len(uname_full) >= 2 else ("••••" if uname_full else "—")
+            if c.get("type", CRED_TYPE_PASSWORD) == CRED_TYPE_SSH_KEY:
+                secret_html = (
+                    f'<span style="color:var(--text3);margin-left:6px;font-size:10px;">/ {T("Chiave SSH")} '
+                    f'{_esc(c.get("key_type", ""))}</span>'
+                    f'<div style="font-size:10px;color:var(--text3);margin-top:2px;">{_esc(c.get("fingerprint", ""))}</div>'
+                )
+            else:
+                secret_html = '<span style="color:var(--text3);margin-left:6px;letter-spacing:1px;font-size:10px;">/ ••••••••</span>'
             cred_rows += (
                 f'<tr>'
-                f'<td style="font-weight:600;color:var(--text);">{c["name"]}</td>'
+                f'<td style="font-weight:600;color:var(--text);">{_esc(c["name"])}</td>'
                 f'<td style="font-family:var(--mono);font-size:12px;color:var(--text2);">'
                 f'{uname_preview}'
-                f'<span style="color:var(--text3);margin-left:6px;letter-spacing:1px;font-size:10px;">/ ••••••••</span>'
+                f'{secret_html}'
                 f'</td>'
                 f'<td style="font-size:11px;">{usage_txt}</td>'
                 f'<td style="white-space:nowrap;">'
@@ -10606,7 +10633,7 @@ onTargetChange();
                 f'</tr>'
             )
 
-        cred_sets_js = json.dumps([{"id": c["id"], "name": c["name"]} for c in CRED_SETS])
+        cred_sets_js = json.dumps([_cred_set_public(c) for c in CRED_SETS])
 
         # Build site-credential assignment rows (avoid nested triple-quoted f-strings for Python 3.9 compat)
         if not SITES:
@@ -10617,7 +10644,7 @@ onTargetChange();
                 opts = '<option value="">— Credenziali del singolo router —</option>'
                 for c in CRED_SETS:
                     sel = ' selected' if s.get("credential_id") == c["id"] else ''
-                    opts += f'<option value="{c["id"]}"{sel}>{c["name"]}</option>'
+                    opts += f'<option value="{c["id"]}"{sel}>{_esc(_cred_label(c))}</option>'
                 city_span = f' <span style="font-size:10px;color:var(--text3);font-weight:400;">({s.get("city","")})</span>' if s.get("city") else ""
                 site_creds_rows += (
                     f'<tr style="border-bottom:1px solid var(--border);">'
@@ -10695,37 +10722,80 @@ function openCredModal(cid) {{
   document.getElementById('credModalId').value = cid||'';
   var isEdit = !!cid;
   document.getElementById('credModalTitle').textContent = isEdit ? '{T("Modifica credenziali")}' : '{T("Nuove credenziali")}';
-  document.getElementById('credModalPassRow').style.display = '';
   document.getElementById('credModalPassHint').style.display = isEdit ? 'inline' : 'none';
-  if(isEdit) {{
-    var c = CRED_SETS_DATA.find(function(x){{return x.id===cid;}});
-    document.getElementById('credModalName').value = c ? c.name : '';
-    document.getElementById('credModalUser').value = '';   // username not sent to client for security
-    document.getElementById('credModalPass').value = '';
-  }} else {{
-    document.getElementById('credModalName').value = '';
-    document.getElementById('credModalUser').value = '';
-    document.getElementById('credModalPass').value = '';
-  }}
+  document.getElementById('credModalKeyHint').style.display = isEdit ? 'inline' : 'none';
+  var c = isEdit ? CRED_SETS_DATA.find(function(x){{return x.id===cid;}}) : null;
+  document.getElementById('credModalName').value = c ? c.name : '';
+  document.getElementById('credModalUser').value = '';   // username not sent to client for security
+  document.getElementById('credModalPass').value = '';
+  document.getElementById('credModalKey').value = '';
+  document.getElementById('credModalKeyFile').value = '';
+  document.getElementById('credModalPassphrase').value = '';
+  var t = document.getElementById('credModalType');
+  t.value = c ? (c.type || 'password') : 'password';
+  t.disabled = isEdit;   // type is fixed once created
+  credModalTypeChanged();
+  var info = document.getElementById('credModalKeyInfo');
+  if(c && c.type === 'ssh_key') {{
+    document.getElementById('credModalFp').textContent = c.fingerprint || '';
+    document.getElementById('credModalPub').value = (c.public_key || '');
+    info.style.display = '';
+  }} else info.style.display = 'none';
   document.getElementById('credModal').classList.add('modal-show');
   setTimeout(function(){{document.getElementById('credModalName').focus();}},80);
 }}
-function closeCredModal() {{ document.getElementById('credModal').classList.remove('modal-show'); }}
+function closeCredModal() {{
+  document.getElementById('credModal').classList.remove('modal-show');
+  document.getElementById('credModalKey').value = '';
+  document.getElementById('credModalPassphrase').value = '';
+}}
+function credModalTypeChanged() {{
+  var isKey = document.getElementById('credModalType').value === 'ssh_key';
+  document.getElementById('credModalPassRow').style.display = isKey ? 'none' : '';
+  document.getElementById('credModalKeyRows').style.display = isKey ? '' : 'none';
+}}
+function credModalLoadKeyFile(input) {{
+  var f = input.files && input.files[0];
+  if(!f) return;
+  if(f.size > 16384) {{ alert('{T("File troppo grande per una chiave privata.")}'); input.value=''; return; }}
+  var rd = new FileReader();
+  rd.onload = function(){{ document.getElementById('credModalKey').value = rd.result; }};
+  rd.readAsText(f);
+}}
+function copyCredPub() {{
+  var el = document.getElementById('credModalPub');
+  el.select();
+  navigator.clipboard.writeText(el.value);
+}}
+function copyRevealText(id) {{
+  navigator.clipboard.writeText(document.getElementById(id).textContent);
+}}
 
 async function saveCredModal() {{
   var cid      = document.getElementById('credModalId').value;
+  var ctype    = document.getElementById('credModalType').value;
   var name     = document.getElementById('credModalName').value.trim();
   var username = document.getElementById('credModalUser').value.trim();
   var password = document.getElementById('credModalPass').value;
+  var pkey     = document.getElementById('credModalKey').value;
+  var phrase   = document.getElementById('credModalPassphrase').value;
   if(!name)     {{ alert('{T("Inserisci un nome per questo set di credenziali.")}'); return; }}
   if(!username) {{ alert('{T("Inserisci lo username SSH.")}'); return; }}
-  if(!cid && !password) {{ alert('{T("Inserisci la password SSH.")}'); return; }}
   var body = {{name:name, username:username}};
-  if(password) body.password = password;
+  if(ctype === 'ssh_key') {{
+    if(!cid && !pkey.trim()) {{ alert('{T("Incolla o carica una chiave privata.")}'); return; }}
+    if(pkey.trim()) body.private_key = pkey;
+    if(phrase) body.passphrase = phrase;
+    if(!cid) body.type = 'ssh_key';
+  }} else {{
+    if(!cid && !password) {{ alert('{T("Inserisci la password SSH.")}'); return; }}
+    if(password) body.password = password;
+  }}
   if(cid) body.id = cid;
   var url = cid ? '/api/creds/update' : '/api/creds/add';
   var r = await fetch(url, {{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(body)}});
   var j = await r.json();
+  document.getElementById('credModalKey').value = '';
   if(j.ok) {{
     closeCredModal();
     window.location.reload();
@@ -10754,6 +10824,8 @@ function closeRevealModal() {{
   document.getElementById('revealModal').classList.remove('modal-show');
   document.getElementById('revealUser').textContent = '';
   document.getElementById('revealPass').textContent = '';
+  document.getElementById('revealFp').textContent = '';
+  document.getElementById('revealPub').textContent = '';
 }}
 async function doReveal() {{
   var cid  = document.getElementById('revealCredId').value;
@@ -10767,7 +10839,15 @@ async function doReveal() {{
   if(j.ok) {{
     errEl.style.display = 'none';
     document.getElementById('revealUser').textContent = j.username;
-    document.getElementById('revealPass').textContent = j.password;
+    var isKey = j.type === 'ssh_key';
+    document.getElementById('revealPassBox').style.display = isKey ? 'none' : '';
+    document.getElementById('revealKeyBox').style.display = isKey ? '' : 'none';
+    if(isKey) {{
+      document.getElementById('revealFp').textContent = j.fingerprint || '';
+      document.getElementById('revealPub').textContent = j.public_key || '';
+    }} else {{
+      document.getElementById('revealPass').textContent = j.password;
+    }}
     document.getElementById('revealInputArea').style.display = 'none';
     document.getElementById('revealResultArea').style.display = '';
   }} else {{
@@ -10796,6 +10876,14 @@ async function doReveal() {{
       <input type="text" id="credModalUser" placeholder="Username"
              style="width:100%;box-sizing:border-box;" autocomplete="off">
     </div>
+    <div style="margin-bottom:12px;">
+      <label style="font-size:10px;font-weight:700;color:var(--text2);display:block;
+             margin-bottom:5px;text-transform:uppercase;letter-spacing:.6px;">{T("Tipo")}</label>
+      <select id="credModalType" onchange="credModalTypeChanged()" style="width:100%;box-sizing:border-box;">
+        <option value="password">{T("Password")}</option>
+        <option value="ssh_key">{T("Chiave SSH")}</option>
+      </select>
+    </div>
     <div id="credModalPassRow" style="margin-bottom:20px;">
       <label style="font-size:10px;font-weight:700;color:var(--text2);display:block;
              margin-bottom:5px;text-transform:uppercase;letter-spacing:.6px;">
@@ -10805,6 +10893,35 @@ async function doReveal() {{
       </label>
       <input type="password" id="credModalPass" placeholder="{T('Password SSH')}"
              style="width:100%;box-sizing:border-box;" autocomplete="new-password">
+    </div>
+    <div id="credModalKeyRows" style="display:none;margin-bottom:20px;">
+      <div id="credModalKeyInfo" style="display:none;margin-bottom:12px;">
+        <label style="font-size:10px;font-weight:700;color:var(--text2);display:block;
+               margin-bottom:5px;text-transform:uppercase;letter-spacing:.6px;">{T("Impronta chiave")}</label>
+        <code id="credModalFp" style="display:block;font-size:11px;font-family:var(--mono);word-break:break-all;
+              background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;margin-bottom:8px;"></code>
+        <label style="font-size:10px;font-weight:700;color:var(--text2);display:block;
+               margin-bottom:5px;text-transform:uppercase;letter-spacing:.6px;">{T("Chiave pubblica")}</label>
+        <div style="display:flex;gap:6px;align-items:flex-start;">
+          <textarea id="credModalPub" readonly rows="3" style="flex:1;box-sizing:border-box;font-family:var(--mono);font-size:10px;"></textarea>
+          <button class="btn" style="padding:3px 8px;font-size:10px;" onclick="copyCredPub()">⎘</button>
+        </div>
+        <div style="font-size:10px;color:var(--text3);margin-top:4px;">{T("Importa la chiave pubblica sul router: /user ssh-keys import public-key-file=... user=...")}</div>
+      </div>
+      <label style="font-size:10px;font-weight:700;color:var(--text2);display:block;
+             margin-bottom:5px;text-transform:uppercase;letter-spacing:.6px;">
+        {T("Chiave privata")} *
+        <span id="credModalKeyHint" style="font-weight:400;text-transform:none;
+              color:var(--text3);letter-spacing:0;">{T("(vuoto = non cambiare)")}</span>
+      </label>
+      <textarea id="credModalKey" rows="6" spellcheck="false" autocomplete="off"
+                placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+                style="width:100%;box-sizing:border-box;font-family:var(--mono);font-size:10px;"></textarea>
+      <input type="file" id="credModalKeyFile" onchange="credModalLoadKeyFile(this)" style="margin:6px 0 12px;font-size:11px;">
+      <label style="font-size:10px;font-weight:700;color:var(--text2);display:block;
+             margin-bottom:5px;text-transform:uppercase;letter-spacing:.6px;">{T("Passphrase (opzionale)")}</label>
+      <input type="password" id="credModalPassphrase" style="width:100%;box-sizing:border-box;" autocomplete="new-password">
+      <div style="font-size:10px;color:var(--text3);margin-top:6px;">{T("Una chiave senza passphrase e protetta solo dalla cifratura di questa applicazione.")}</div>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end;">
       <button onclick="closeCredModal()" class="btn">{T("Annulla")}</button>
@@ -10846,14 +10963,27 @@ async function doReveal() {{
                   onclick="navigator.clipboard.writeText(document.getElementById('revealUser').textContent)">⎘</button>
         </div>
       </div>
-      <div style="margin-bottom:20px;">
+      <div id="revealPassBox" style="margin-bottom:20px;">
         <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;">{T("Password")}</div>
         <div style="display:flex;gap:6px;align-items:center;">
           <code id="revealPass" style="flex:1;background:var(--bg3);border:1px solid var(--border2);
                 border-radius:6px;padding:7px 10px;font-size:13px;color:var(--text);font-family:var(--mono);"></code>
           <button class="btn" style="padding:3px 8px;font-size:10px;"
-                  onclick="navigator.clipboard.writeText(document.getElementById('revealPass').textContent)">⎘</button>
+                  onclick="copyRevealText('revealPass')">⎘</button>
         </div>
+      </div>
+      <div id="revealKeyBox" style="margin-bottom:20px;display:none;">
+        <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;">{T("Impronta chiave")}</div>
+        <code id="revealFp" style="display:block;background:var(--bg3);border:1px solid var(--border2);
+              border-radius:6px;padding:7px 10px;font-size:12px;color:var(--text);font-family:var(--mono);word-break:break-all;margin-bottom:10px;"></code>
+        <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;">{T("Chiave pubblica")}</div>
+        <div style="display:flex;gap:6px;align-items:flex-start;">
+          <code id="revealPub" style="flex:1;background:var(--bg3);border:1px solid var(--border2);
+                border-radius:6px;padding:7px 10px;font-size:11px;color:var(--text);font-family:var(--mono);word-break:break-all;"></code>
+          <button class="btn" style="padding:3px 8px;font-size:10px;"
+                  onclick="copyRevealText('revealPub')">⎘</button>
+        </div>
+        <div style="font-size:10px;color:var(--text3);margin-top:6px;">{T("La chiave privata non viene mai mostrata.")}</div>
       </div>
       <div style="font-size:10px;color:var(--text3);margin-bottom:14px;">
         ! {T("Chiudi questa finestra appena hai copiato le credenziali.")}
@@ -10973,7 +11103,7 @@ async function doReveal() {{
             "custom":    T("Personalizzato"),
             "": "—"})
         cred_sets_js = json.dumps([
-            {"id": c["id"], "name": c["name"]}
+            {"id": c["id"], "name": _cred_label(c)}
             for c in CRED_SETS])
         groups_js = json.dumps(sorted({r.get("group","") for r in ROUTERS if r.get("group","")}))
 
@@ -11180,7 +11310,7 @@ dialog::backdrop{{background:rgba(0,0,0,.55);}}
       <label>Credenziali SSH &nbsp;<a href="/credentials" style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;color:var(--accent);">Apri Credential Manager</a></label>
       <select id="dlgSiteCred">
         <option value="">-- Credenziali del singolo router --</option>
-        {"".join(f'<option value="{c["id"]}">{c["name"]}</option>' for c in CRED_SETS)}
+        {"".join(f'<option value="{c["id"]}">{_esc(_cred_label(c))}</option>' for c in CRED_SETS)}
       </select></div>
     <div id="dlgSiteMsg" class="dlg-msg"></div>
     <div class="dlg-actions">
@@ -12115,7 +12245,7 @@ function topoSavePos() {{
         offline = total - online
 
         # Credential sets for the device credentials modal (name only, no passwords)
-        cred_sets_js = json.dumps([{"id": c["id"], "name": c["name"]} for c in CRED_SETS])
+        cred_sets_js = json.dumps([{"id": c["id"], "name": _cred_label(c)} for c in CRED_SETS])
 
         # In-app tour overlay (injected when ?tour=2 is in the URL)
         _qs_main = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
@@ -12817,7 +12947,7 @@ async function saveCredsModal() {{
     def render_discovery_page(self, session=None):
         devices_js = json.dumps({ip: {"group": d.get("group",""), "tags": d.get("tags",[])}
                                   for ip, d in DEVICES.items()})
-        disc_cred_sets_js = json.dumps([{"id": c["id"], "name": c["name"], "username": _cred_set_username(c)} for c in CRED_SETS])
+        disc_cred_sets_js = json.dumps([{"id": c["id"], "name": _cred_label(c), "username": _cred_set_username(c)} for c in CRED_SETS])
         sites_for_disc_js = json.dumps([
             {"id": sid, "name": s.get("name", sid)}
             for sid, s in sorted(SITES.items(), key=lambda x: x[1].get("name", ""))
@@ -13326,7 +13456,7 @@ function discSort(col) {{
       </div>
       <select id="upCredPicker" style="width:100%;box-sizing:border-box;font-size:12px;margin-bottom:4px;">
         <option value="">— {T("Automatico: usa le credenziali del sito o del router")} —</option>
-        {chr(10).join(f'        <option value="{c["id"]}">{c["name"]}</option>' for c in CRED_SETS)}
+                {chr(10).join(f'        <option value="{c["id"]}">{_esc(_cred_label(c))}</option>' for c in CRED_SETS)}
       </select>
       {"" if CRED_SETS else f'<div style="font-size:10px;color:var(--text3);font-style:italic;margin-bottom:4px;">{T("Nessun set credenziali configurato.")} <a href="/credentials" style="color:var(--accent);">{T("Creane uno nel Credential Manager")} →</a></div>'}
     </div>
@@ -14469,7 +14599,7 @@ _draw();
       </div>
       <select id="upgCredPicker" style="width:100%;box-sizing:border-box;font-size:12px;margin-bottom:4px;">
         <option value="">— {"Automatic: device / site credentials" if lang_en else "Automatico: credenziali dispositivo / sito"} —</option>
-        {chr(10).join(f'        <option value="{c["id"]}">{c["name"]}</option>' for c in CRED_SETS)}
+                {chr(10).join(f'        <option value="{c["id"]}">{_esc(_cred_label(c))}</option>' for c in CRED_SETS)}
       </select>
       {"" if CRED_SETS else f'<div style="font-size:10px;color:var(--text3);font-style:italic;margin-bottom:4px;">{"No credentials configured." if lang_en else "Nessuna credenziale configurata."} <a href="/credentials" style="color:var(--accent);">{"Create one" if lang_en else "Creane una"} →</a></div>'}
     </div>
