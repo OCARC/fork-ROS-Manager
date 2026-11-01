@@ -1002,29 +1002,34 @@ def device_remove(ip):
             return True
         return False
 
-def _get_device_creds(ip):
-    """Return (ssh_user, ssh_password) for a device.
+def _get_device_credential(ip) -> dict:
+    """Return the credential object for a device.
     Priority: named credential_id → per-device ssh_user/pass → site credential."""
     dev = DEVICES.get(ip, {})
     # 1. Named credential set assigned to device
     cred_id = dev.get("credential_id", "")
     if cred_id:
-        user, passwd = _resolve_cred_id(cred_id)
-        if user:
-            return user, passwd
-    # 2. Legacy per-device credentials
+        cred = _resolve_credential(cred_id)
+        if cred["username"]:
+            return cred
+    # 2. Legacy per-device credentials (password only)
     user   = dev.get("ssh_user", "") or ""
     enc    = dev.get("ssh_pass_enc", "") or ""
     passwd = _decrypt(enc) if enc else ""
     if user and passwd:
-        return user, passwd
+        return _make_credential(user, passwd)
     # 3. Site credential set
     site_id = dev.get("site_id", "")
     if site_id:
-        user, passwd = _get_creds_for_site(site_id)
-        if user:
-            return user, passwd
-    return "", ""
+        cred = _get_credential_for_site(site_id)
+        if cred["username"]:
+            return cred
+    return _make_credential()
+
+def _get_device_creds(ip):
+    """Return (ssh_user, ssh_password) for a device."""
+    cred = _get_device_credential(ip)
+    return cred["username"], cred["password"]
 
 def _device_has_creds(ip):
     """True if the device has credentials configured (named set or per-device)."""
@@ -2005,31 +2010,36 @@ def _ssh_err_str(exc: Exception) -> str:
     # Fallback
     return f"{name}: {msg[:120]}"
 
-def _ssh_connect(ip):
-    """Connect for READ — uses per-device credentials."""
-    user, passwd = _get_device_creds(ip)
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(ip, username=user, password=passwd, timeout=SSH_TIMEOUT,
-                look_for_keys=False, allow_agent=False,
-                banner_timeout=SSH_TIMEOUT + 2, auth_timeout=SSH_TIMEOUT + 2)
-    return ssh
+def _ssh_auth_kwargs(cred: dict) -> dict:
+    """Map a credential object to the paramiko connect() auth arguments.
+    New credential types (key, certificate) add a branch here."""
+    ctype = cred.get("type", CRED_TYPE_PASSWORD)
+    if ctype == CRED_TYPE_PASSWORD:
+        return {"username": cred.get("username", ""), "password": cred.get("password", "")}
+    raise ValueError(f"Unsupported credential type: {ctype}")
 
-def _ssh_connect_creds(ip, username, password):
-    """Connect with explicit credentials — used for WRITE operations (upload/run)."""
+def _ssh_connect_cred(ip, cred: dict):
+    """Connect using a credential object (the single place that builds SSH connections)."""
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(
         ip,
-        username=username,
-        password=password,
         timeout=SSH_TIMEOUT,
         look_for_keys=False,
         allow_agent=False,
         banner_timeout=SSH_TIMEOUT + 2,
         auth_timeout=SSH_TIMEOUT + 2,
+        **_ssh_auth_kwargs(cred),
     )
     return ssh
+
+def _ssh_connect(ip):
+    """Connect for READ — uses per-device credentials."""
+    return _ssh_connect_cred(ip, _get_device_credential(ip))
+
+def _ssh_connect_creds(ip, username, password):
+    """Connect with explicit credentials — used for WRITE operations (upload/run)."""
+    return _ssh_connect_cred(ip, _make_credential(username, password))
 
 def _read_ssh_channel(channel, timeout: float = 20.0) -> str:
     """Read from a Paramiko channel with a hard wall-clock deadline.
@@ -2272,25 +2282,39 @@ def _cred_set_username(cs: dict) -> str:
         return _decrypt(cs["username_enc"])
     return cs.get("username", "")   # legacy plaintext fallback
 
+CRED_TYPE_PASSWORD = "password"
+
+def _make_credential(username="", password="", ctype=CRED_TYPE_PASSWORD, **extra) -> dict:
+    """Build the in-memory credential object passed to connection code."""
+    cred = {"type": ctype, "username": username or "", "password": password or ""}
+    cred.update(extra)
+    return cred
+
+def _cred_set_to_credential(cs: dict) -> dict:
+    """Decrypt a stored credential set into a credential object. Sets without
+    a "type" are password sets."""
+    ctype = cs.get("type", CRED_TYPE_PASSWORD)
+    return _make_credential(_cred_set_username(cs), _decrypt(cs.get("password_enc", "")), ctype)
+
+def _resolve_credential(cred_id) -> dict:
+    """Return the credential object for a named set (empty password credential if not found)."""
+    cs = next((c for c in CRED_SETS if c["id"] == cred_id), None) if cred_id else None
+    return _cred_set_to_credential(cs) if cs else _make_credential()
+
 def _resolve_cred_id(cred_id):
     """Return (username, password) for a named credential set, or ('','') if not found."""
-    if not cred_id:
-        return "", ""
-    cs = next((c for c in CRED_SETS if c["id"] == cred_id), None)
-    if not cs:
-        return "", ""
-    return _cred_set_username(cs), _decrypt(cs.get("password_enc", ""))
+    cred = _resolve_credential(cred_id)
+    return cred["username"], cred["password"]
+
+def _get_credential_for_site(site_id) -> dict:
+    """Return the credential object of the set assigned to a site (empty if none)."""
+    cid = SITES.get(site_id, {}).get("credential_id", "")
+    return _resolve_credential(cid)
 
 def _get_creds_for_site(site_id):
     """Return (user, pass) from the credential set assigned to a site, or ('','')."""
-    site = SITES.get(site_id, {})
-    cid  = site.get("credential_id", "")
-    if not cid:
-        return "", ""
-    cs = next((c for c in CRED_SETS if c["id"] == cid), None)
-    if not cs:
-        return "", ""
-    return _cred_set_username(cs), _decrypt(cs.get("password_enc", ""))
+    cred = _get_credential_for_site(site_id)
+    return cred["username"], cred["password"]
 BACKUP_RUNNING  = False
 BACKUP_LOCK     = threading.Lock()
 BACKUP_LAST_RESULTS: list = []   # [{ip, name, file, size, ok, msg, ts}]
