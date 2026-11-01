@@ -2016,6 +2016,9 @@ def _ssh_auth_kwargs(cred: dict) -> dict:
     ctype = cred.get("type", CRED_TYPE_PASSWORD)
     if ctype == CRED_TYPE_PASSWORD:
         return {"username": cred.get("username", ""), "password": cred.get("password", "")}
+    if ctype == CRED_TYPE_SSH_KEY:
+        pkey = _load_private_key(cred.get("private_key", ""), cred.get("passphrase", ""))
+        return {"username": cred.get("username", ""), "pkey": pkey}
     raise ValueError(f"Unsupported credential type: {ctype}")
 
 def _ssh_connect_cred(ip, cred: dict):
@@ -2241,29 +2244,102 @@ def _migrate_cred_sets_encrypt():
 
 _migrate_cred_sets_encrypt()
 
-def cred_set_add(name, username, password):
+CRED_TYPE_SSH_KEY = "ssh_key"
+CRED_TYPES = (CRED_TYPE_PASSWORD, CRED_TYPE_SSH_KEY)
+MAX_PRIVATE_KEY_BYTES = 16 * 1024
+
+def _load_private_key(key_text: str, passphrase: str = ""):
+    """Parse an OpenSSH/PEM private key (Ed25519, ECDSA or RSA) into a paramiko key.
+    Raises ValueError with a user-presentable message."""
+    key_text = (key_text or "").replace("\r\n", "\n").strip()
+    if not key_text:
+        raise ValueError("Private key is empty")
+    if len(key_text.encode()) > MAX_PRIVATE_KEY_BYTES:
+        raise ValueError("Private key is too large")
+    if "PRIVATE KEY" not in key_text:
+        raise ValueError("Not a private key (expected a PEM/OpenSSH private key)")
+    key_text += "\n"
+    for cls in (paramiko.Ed25519Key, paramiko.ECDSAKey, paramiko.RSAKey):
+        try:
+            return cls.from_private_key(_io.StringIO(key_text), password=passphrase or None)
+        except paramiko.PasswordRequiredException:
+            raise ValueError("The key is passphrase-protected: a passphrase is required")
+        except (paramiko.SSHException, ValueError):
+            continue
+    raise ValueError("Invalid or unsupported private key, or wrong passphrase")
+
+def _key_fingerprint(pkey) -> str:
+    """OpenSSH-style SHA256 fingerprint, e.g. SHA256:abc..."""
+    digest = hashlib.sha256(pkey.asbytes()).digest()
+    return "SHA256:" + _b64.b64encode(digest).decode().rstrip("=")
+
+def _key_public_line(pkey) -> str:
+    """Public key in authorized_keys / RouterOS import format."""
+    return f"{pkey.get_name()} {pkey.get_base64()}"
+
+def _apply_ssh_key(entry: dict, private_key: str, passphrase: str) -> None:
+    """Validate a key and store its encrypted form and display metadata on a set."""
+    pkey = _load_private_key(private_key, passphrase)
+    entry["type"]            = CRED_TYPE_SSH_KEY
+    entry["private_key_enc"] = _encrypt(private_key.replace("\r\n", "\n").strip() + "\n")
+    entry["passphrase_enc"]  = _encrypt(passphrase) if passphrase else ""
+    entry["key_type"]        = pkey.get_name()
+    entry["fingerprint"]     = _key_fingerprint(pkey)
+    entry["public_key"]      = _key_public_line(pkey)
+    entry["password_enc"]    = ""
+
+def cred_set_add(name, username, password="", ctype=CRED_TYPE_PASSWORD,
+                 private_key="", passphrase=""):
+    """Add a credential set. Raises ValueError for an invalid type or key."""
+    if ctype not in CRED_TYPES:
+        raise ValueError(f"Unsupported credential type: {ctype}")
     cid = "cs_" + str(int(time.time() * 1000))
-    entry = {
-        "id": cid, "name": name,
-        "username_enc": _encrypt(username),
-        "password_enc": _encrypt(password),
-    }
+    entry = {"id": cid, "name": name, "username_enc": _encrypt(username)}
+    if ctype == CRED_TYPE_SSH_KEY:
+        _apply_ssh_key(entry, private_key, passphrase)
+    else:
+        entry["password_enc"] = _encrypt(password)
     with CRED_SETS_LOCK:
         CRED_SETS.append(entry)
         _save_cred_sets()
     return cid
 
-def cred_set_update(cid, name=None, username=None, password=None):
+def cred_set_update(cid, name=None, username=None, password=None,
+                    private_key=None, passphrase=None):
+    """Update a credential set. None means keep the existing value.
+    For key sets, a new private_key replaces the key (and passphrase); a new
+    passphrase alone re-validates against the stored key. Raises ValueError."""
     with CRED_SETS_LOCK:
-        for cs in CRED_SETS:
-            if cs["id"] == cid:
-                if name     is not None: cs["name"]         = name
-                if username is not None:
-                    cs["username_enc"] = _encrypt(username)
-                    cs.pop("username", None)   # remove old plaintext field if present
-                if password is not None: cs["password_enc"]  = _encrypt(password)
-                break
+        cs = next((c for c in CRED_SETS if c["id"] == cid), None)
+        if cs is None:
+            return
+        updated = dict(cs)
+        if name is not None: updated["name"] = name
+        if username is not None:
+            updated["username_enc"] = _encrypt(username)
+            updated.pop("username", None)   # remove old plaintext field if present
+        if updated.get("type", CRED_TYPE_PASSWORD) == CRED_TYPE_SSH_KEY:
+            if private_key is not None or passphrase is not None:
+                key_text = private_key if private_key is not None else _decrypt(updated.get("private_key_enc", ""))
+                if passphrase is not None:
+                    new_pass = passphrase
+                elif private_key is not None:
+                    new_pass = ""
+                else:
+                    new_pass = _decrypt(updated.get("passphrase_enc", ""))
+                _apply_ssh_key(updated, key_text, new_pass)
+        elif password is not None:
+            updated["password_enc"] = _encrypt(password)
+        cs.clear()
+        cs.update(updated)
         _save_cred_sets()
+
+def _cred_set_public(cs: dict) -> dict:
+    """Non-secret view of a credential set, safe to send to the browser."""
+    pub = {"id": cs["id"], "name": cs["name"], "type": cs.get("type", CRED_TYPE_PASSWORD)}
+    if pub["type"] == CRED_TYPE_SSH_KEY:
+        pub.update({k: cs.get(k, "") for k in ("key_type", "fingerprint", "public_key")})
+    return pub
 
 def cred_set_remove(cid):
     with CRED_SETS_LOCK:
@@ -2294,7 +2370,11 @@ def _cred_set_to_credential(cs: dict) -> dict:
     """Decrypt a stored credential set into a credential object. Sets without
     a "type" are password sets."""
     ctype = cs.get("type", CRED_TYPE_PASSWORD)
-    return _make_credential(_cred_set_username(cs), _decrypt(cs.get("password_enc", "")), ctype)
+    extra = {}
+    if ctype == CRED_TYPE_SSH_KEY:
+        extra = {"private_key": _decrypt(cs.get("private_key_enc", "")),
+                 "passphrase":  _decrypt(cs.get("passphrase_enc", ""))}
+    return _make_credential(_cred_set_username(cs), _decrypt(cs.get("password_enc", "")), ctype, **extra)
 
 def _resolve_credential(cred_id) -> dict:
     """Return the credential object for a named set (empty password credential if not found)."""
@@ -5953,22 +6033,42 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": True})
 
             # ── Credential sets CRUD ─────────────────────────────────────
+            def _raw(key):
+                # unstripped value (passphrases may legitimately contain spaces)
+                v = params.get(key, "")
+                v = v[0] if isinstance(v, list) and v else ("" if isinstance(v, list) else v)
+                return str(v)
+
             if path == "/api/creds/add":
                 cs_name  = _p("name")
                 username = _p("username")
+                ctype    = _p("type") or CRED_TYPE_PASSWORD
                 password = _p("password")
-                if not cs_name or not username or not password:
+                if not cs_name or not username:
                     return self._json({"ok": False, "msg": "nome, username e password richiesti"})
-                cid = cred_set_add(cs_name, username, password)
-                return self._json({"ok": True, "id": cid,
-                                   "cred": {"id": cid, "name": cs_name}})
+                if ctype == CRED_TYPE_PASSWORD and not password:
+                    return self._json({"ok": False, "msg": "nome, username e password richiesti"})
+                if ctype == CRED_TYPE_SSH_KEY and not _raw("private_key").strip():
+                    return self._json({"ok": False, "msg": "A private key is required"})
+                try:
+                    cid = cred_set_add(cs_name, username, password, ctype,
+                                       _raw("private_key"), _raw("passphrase"))
+                except ValueError as e:
+                    return self._json({"ok": False, "msg": str(e)})
+                cs = next(c for c in CRED_SETS if c["id"] == cid)
+                return self._json({"ok": True, "id": cid, "cred": _cred_set_public(cs)})
 
             if path == "/api/creds/update":
                 cid      = _p("id")
                 cs_name  = _p("name")  or None
                 username = _p("username") or None
                 password = _p("password") or None
-                cred_set_update(cid, name=cs_name, username=username, password=password)
+                try:
+                    cred_set_update(cid, name=cs_name, username=username, password=password,
+                                    private_key=_raw("private_key") or None,
+                                    passphrase=_raw("passphrase") or None)
+                except ValueError as e:
+                    return self._json({"ok": False, "msg": str(e)})
                 return self._json({"ok": True})
 
             if path == "/api/creds/remove":
@@ -5984,6 +6084,10 @@ class Handler(BaseHTTPRequestHandler):
                 cs = next((c for c in CRED_SETS if c["id"] == cid), None)
                 if not cs:
                     return self._json({"ok": False, "msg": "Set non trovato."})
+                if cs.get("type", CRED_TYPE_PASSWORD) == CRED_TYPE_SSH_KEY:
+                    # never reveal private key material, only identifying metadata
+                    return self._json({"ok": True, "username": _cred_set_username(cs), "password": "",
+                                       **_cred_set_public(cs)})
                 return self._json({
                     "ok":       True,
                     "username": _cred_set_username(cs),

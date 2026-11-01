@@ -60,6 +60,12 @@ additive change.
 4. Credentials page: type selector, key paste/upload, passphrase, public key and fingerprint display, passphrase-less
    key warning. Pickers show the credential type.
 5. Future (not this branch): generate a key pair in the app, show the public key and RouterOS import command.
+
+## Progress
+
+- Phase 1 done (`c2c740e`): credential objects, `_resolve_credential`, `_ssh_connect_cred`; tuple helpers kept as wrappers.
+- Phase 2 done: `ssh_key` sets in the data layer (`cred_set_add` / `cred_set_update`), key parsing (`_load_private_key`: Ed25519, ECDSA, RSA, with passphrase), `_key_fingerprint`, `_key_public_line`, encrypted storage, `_ssh_auth_kwargs` key branch, and `/api/creds/add|update|reveal` wiring. Reveal returns only metadata for key sets. `_cred_set_public` is the only shape sent to the browser. Fingerprint and public key line verified against `ssh-keygen`.
+- Key tests need `paramiko` and `cryptography` (run with the project venv); they skip otherwise.
 6. Documentation, English/Italian strings (use `T()` / `lang_en`), manual test against a RouterOS device.
 
 ## Call sites to migrate (line numbers on `main`, approximate)
