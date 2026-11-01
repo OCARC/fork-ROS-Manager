@@ -18,12 +18,12 @@ DASHBOARD = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 
 _NAMES = {
     "_cred_set_username", "_make_credential", "_cred_set_to_credential", "_resolve_credential",
-    "_resolve_cred_id", "_get_credential_for_site", "_get_creds_for_site", "_get_device_credential",
-    "_get_device_creds", "_ssh_auth_kwargs", "_ssh_connect_cred", "_ssh_connect", "_ssh_connect_creds",
+    "_cred_usable", "_get_credential_for_site", "_get_device_credential",
+    "_ssh_auth_kwargs", "_ssh_connect_cred", "_ssh_connect",
     "_load_private_key", "_key_fingerprint", "_key_public_line", "_apply_ssh_key", "cred_set_add",
     "cred_set_update", "_cred_set_public",
 }
-_CONSTS = {"CRED_TYPE_SSH_KEY", "CRED_TYPES", "MAX_PRIVATE_KEY_BYTES"}
+_CONSTS = {"CRED_TYPE_PASSWORD", "CRED_TYPE_SSH_KEY", "CRED_TYPES", "MAX_PRIVATE_KEY_BYTES"}
 
 
 def _load_namespace():
@@ -54,15 +54,16 @@ class CredentialResolutionTests(unittest.TestCase):
         self.assertEqual(cred, {"type": "password", "username": "admin", "password": "pw"})
 
     def test_legacy_plaintext_username(self):
-        self.assertEqual(self.ns["_resolve_cred_id"]("cs_2"), ("old", "pw2"))
+        self.assertEqual(self.ns["_resolve_credential"]("cs_2"),
+                         {"type": "password", "username": "old", "password": "pw2"})
 
     def test_unknown_or_empty_id(self):
-        self.assertEqual(self.ns["_resolve_cred_id"]("nope"), ("", ""))
-        self.assertEqual(self.ns["_resolve_cred_id"](""), ("", ""))
+        self.assertEqual(self.ns["_resolve_credential"]("nope")["username"], "")
+        self.assertEqual(self.ns["_resolve_credential"]("")["username"], "")
 
     def test_site_credential(self):
-        self.assertEqual(self.ns["_get_creds_for_site"]("s1"), ("admin", "pw"))
-        self.assertEqual(self.ns["_get_creds_for_site"]("missing"), ("", ""))
+        self.assertEqual(self.ns["_get_credential_for_site"]("s1")["username"], "admin")
+        self.assertEqual(self.ns["_get_credential_for_site"]("missing")["username"], "")
 
     def test_device_priority(self):
         d = self.ns["DEVICES"]
@@ -70,12 +71,24 @@ class CredentialResolutionTests(unittest.TestCase):
         d["2.2.2.2"] = {"ssh_user": "u", "ssh_pass_enc": "enc:p", "site_id": "s1"}
         d["3.3.3.3"] = {"site_id": "s1"}
         d["4.4.4.4"] = {"credential_id": "gone", "site_id": "s1"}
-        get = self.ns["_get_device_creds"]
+        g = self.ns["_get_device_credential"]
+        get = lambda ip: (g(ip)["username"], g(ip)["password"])
         self.assertEqual(get("1.1.1.1"), ("old", "pw2"))
         self.assertEqual(get("2.2.2.2"), ("u", "p"))
         self.assertEqual(get("3.3.3.3"), ("admin", "pw"))
         self.assertEqual(get("4.4.4.4"), ("admin", "pw"))
         self.assertEqual(get("9.9.9.9"), ("", ""))
+
+
+class CredUsableTests(unittest.TestCase):
+    def test_usable(self):
+        u = _load_namespace()["_cred_usable"]
+        self.assertTrue(u({"type": "password", "username": "a", "password": "b"}))
+        self.assertFalse(u({"type": "password", "username": "a", "password": ""}))
+        self.assertTrue(u({"type": "ssh_key", "username": "a", "private_key": "k"}))
+        self.assertFalse(u({"type": "ssh_key", "username": "a", "private_key": ""}))
+        self.assertFalse(u({"type": "bogus", "username": "a"}))
+        self.assertFalse(u(None))
 
 
 class SshConnectTests(unittest.TestCase):
@@ -86,7 +99,7 @@ class SshConnectTests(unittest.TestCase):
         self.client = self.paramiko.SSHClient.return_value
 
     def test_password_connect_arguments_unchanged(self):
-        self.ns["_ssh_connect_creds"]("10.0.0.1", "admin", "pw")
+        self.ns["_ssh_connect_cred"]("10.0.0.1", {"type": "password", "username": "admin", "password": "pw"})
         self.client.connect.assert_called_once_with(
             "10.0.0.1", timeout=7, look_for_keys=False, allow_agent=False,
             banner_timeout=9, auth_timeout=9, username="admin", password="pw")

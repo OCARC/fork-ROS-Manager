@@ -1026,11 +1026,6 @@ def _get_device_credential(ip) -> dict:
             return cred
     return _make_credential()
 
-def _get_device_creds(ip):
-    """Return (ssh_user, ssh_password) for a device."""
-    cred = _get_device_credential(ip)
-    return cred["username"], cred["password"]
-
 def _device_has_creds(ip):
     """True if the device has credentials configured (named set or per-device)."""
     dev = DEVICES.get(ip, {})
@@ -1174,7 +1169,7 @@ def _get_mac_from_arp(ip: str) -> str:
     """Read the MAC address for an IP from the OS ARP cache."""
     # macOS: subprocess.check_output() forks the multi-threaded server process,
     # which can crash (see _tcp_reachable). Skip there; RouterOS devices still
-    # get their MAC via SSH (_ssh_connect_creds) when credentials are set.
+    # get their MAC via SSH (_ssh_connect_cred) when credentials are set.
     if sys.platform != "darwin":
         try:
             arp_flag = "-a" if _IS_WINDOWS else "-n"
@@ -1240,7 +1235,7 @@ def _tcp_reachable(ip: str, timeout: float = 2.0) -> bool:
             pass
     return False
 
-def fingerprint_host(ip, ssh_user=None, ssh_pass=None, timeout=1.5):
+def fingerprint_host(ip, cred=None, timeout=1.5):
     """Fingerprint a host: ping → ports → SSH banner → HTTP → reverse DNS."""
     result = {
         "ip": ip, "responding": False,
@@ -1316,9 +1311,9 @@ def fingerprint_host(ip, ssh_user=None, ssh_pass=None, timeout=1.5):
             pass
 
         # If RouterOS and credentials provided → fetch identity/model/mac
-        if result["device_type"] == "routeros" and ssh_user and ssh_pass:
+        if result["device_type"] == "routeros" and _cred_usable(cred):
             try:
-                ssh = _ssh_connect_creds(ip, ssh_user, ssh_pass)
+                ssh = _ssh_connect_cred(ip, cred)
                 identity = _exec(ssh, ":put [/system identity get name]")
                 model    = (_exec(ssh, ":put [/system routerboard get model]")
                             or _exec(ssh, ":put [/system resource get board-name]"))
@@ -1332,11 +1327,11 @@ def fingerprint_host(ip, ssh_user=None, ssh_pass=None, timeout=1.5):
                 pass
 
         # Generic SSH: try to get hostname for non-RouterOS devices
-        if result["device_type"] != "routeros" and ssh_user and ssh_pass:
+        if result["device_type"] != "routeros" and _cred_usable(cred):
             for cmd in ["hostname -s", "hostname", "cat /etc/hostname",
                         "uname -n", "sysctl kern.hostname | awk '{print $2}'"]:
                 try:
-                    ssh = _ssh_connect_creds(ip, ssh_user, ssh_pass)
+                    ssh = _ssh_connect_cred(ip, cred)
                     out = _exec(ssh, cmd)
                     ssh.close()
                     if out and len(out.strip()) > 0 and "\n" not in out.strip():
@@ -1440,14 +1435,13 @@ def fingerprint_host(ip, ssh_user=None, ssh_pass=None, timeout=1.5):
 
     return result
 
-def start_scan_job(subnet_str, ssh_user, ssh_pass_enc, group_name):
+def start_scan_job(subnet_str, cred, group_name):
     try:
         net   = ipaddress.ip_network(subnet_str, strict=False)
         hosts = list(net.hosts())
     except ValueError:
         return None, "Subnet non valida"
 
-    ssh_pass = _decrypt(ssh_pass_enc) if ssh_pass_enc else ""
     job_id   = str(uuid.uuid4())
     total    = len(hosts)
 
@@ -1472,7 +1466,7 @@ def start_scan_job(subnet_str, ssh_user, ssh_pass_enc, group_name):
             SCAN_JOBS[job_id]["status"] = "done"
 
     def _scan_one(ip_str):
-        r = fingerprint_host(ip_str, ssh_user, ssh_pass)
+        r = fingerprint_host(ip_str, cred)
         with SCAN_JOBS_LOCK:
             SCAN_JOBS[job_id]["results"].append(r)
             SCAN_JOBS[job_id]["done"] += 1
@@ -2040,10 +2034,6 @@ def _ssh_connect(ip):
     """Connect for READ — uses per-device credentials."""
     return _ssh_connect_cred(ip, _get_device_credential(ip))
 
-def _ssh_connect_creds(ip, username, password):
-    """Connect with explicit credentials — used for WRITE operations (upload/run)."""
-    return _ssh_connect_cred(ip, _make_credential(username, password))
-
 def _read_ssh_channel(channel, timeout: float = 20.0) -> str:
     """Read from a Paramiko channel with a hard wall-clock deadline.
 
@@ -2244,6 +2234,7 @@ def _migrate_cred_sets_encrypt():
 
 _migrate_cred_sets_encrypt()
 
+CRED_TYPE_PASSWORD = "password"
 CRED_TYPE_SSH_KEY = "ssh_key"
 CRED_TYPES = (CRED_TYPE_PASSWORD, CRED_TYPE_SSH_KEY)
 MAX_PRIVATE_KEY_BYTES = 16 * 1024
@@ -2358,13 +2349,22 @@ def _cred_set_username(cs: dict) -> str:
         return _decrypt(cs["username_enc"])
     return cs.get("username", "")   # legacy plaintext fallback
 
-CRED_TYPE_PASSWORD = "password"
-
 def _make_credential(username="", password="", ctype=CRED_TYPE_PASSWORD, **extra) -> dict:
     """Build the in-memory credential object passed to connection code."""
     cred = {"type": ctype, "username": username or "", "password": password or ""}
     cred.update(extra)
     return cred
+
+def _cred_usable(cred) -> bool:
+    """True if the credential object carries enough to attempt a login."""
+    if not cred or not cred.get("username"):
+        return False
+    ctype = cred.get("type", CRED_TYPE_PASSWORD)
+    if ctype == CRED_TYPE_PASSWORD:
+        return bool(cred.get("password"))
+    if ctype == CRED_TYPE_SSH_KEY:
+        return bool(cred.get("private_key"))
+    return False
 
 def _cred_set_to_credential(cs: dict) -> dict:
     """Decrypt a stored credential set into a credential object. Sets without
@@ -2381,20 +2381,11 @@ def _resolve_credential(cred_id) -> dict:
     cs = next((c for c in CRED_SETS if c["id"] == cred_id), None) if cred_id else None
     return _cred_set_to_credential(cs) if cs else _make_credential()
 
-def _resolve_cred_id(cred_id):
-    """Return (username, password) for a named credential set, or ('','') if not found."""
-    cred = _resolve_credential(cred_id)
-    return cred["username"], cred["password"]
-
 def _get_credential_for_site(site_id) -> dict:
     """Return the credential object of the set assigned to a site (empty if none)."""
     cid = SITES.get(site_id, {}).get("credential_id", "")
     return _resolve_credential(cid)
 
-def _get_creds_for_site(site_id):
-    """Return (user, pass) from the credential set assigned to a site, or ('','')."""
-    cred = _get_credential_for_site(site_id)
-    return cred["username"], cred["password"]
 BACKUP_RUNNING  = False
 BACKUP_LOCK     = threading.Lock()
 BACKUP_LAST_RESULTS: list = []   # [{ip, name, file, size, ok, msg, ts}]
@@ -2409,20 +2400,20 @@ def _backup_filename(router_name, ip, show_sensitive=False):
     sens = "_S" if show_sensitive else ""
     return f"{safe}_{ts}{sens}.rsc"
 
-def backup_router(r, ssh_user=None, ssh_pass=None, show_sensitive=True, keep_on_router=False):
+def backup_router(r, cred=None, show_sensitive=True, keep_on_router=False):
     """SSH to one router, run /export [show-sensitive], save .rsc file.
-    Credential priority: explicit override (user+pass) → site credential set → per-router creds → global default."""
+    Credential priority: explicit override credential → site credential set → per-router creds → global default."""
     ip = r["ip"]
     try:
         # Resolve credentials: site lookup only when no complete override is provided
-        if not (ssh_user and ssh_pass):
+        if not _cred_usable(cred):
             site_id = r.get("site_id", "")
             if site_id:
-                u, p = _get_creds_for_site(site_id)
-                if u and p:
-                    ssh_user, ssh_pass = u, p
-        if ssh_user and ssh_pass:
-            ssh = _ssh_connect_creds(ip, ssh_user, ssh_pass)
+                site_cred = _get_credential_for_site(site_id)
+                if _cred_usable(site_cred):
+                    cred = site_cred
+        if _cred_usable(cred):
+            ssh = _ssh_connect_cred(ip, cred)
         else:
             ssh = _ssh_connect(ip)  # falls back to per-router or global default
         export_cmd = "/export show-sensitive" if show_sensitive else "/export"
@@ -2492,7 +2483,7 @@ def backup_apply_retention():
             pass
     return removed
 
-def backup_all(ips=None, ssh_user=None, ssh_pass=None, show_sensitive=None, keep_on_router=None):
+def backup_all(ips=None, cred=None, show_sensitive=None, keep_on_router=None):
     """Run backup on all ONLINE routers (or a subset by IP list)."""
     global BACKUP_RUNNING, BACKUP_LAST_RESULTS
     # Fall back to stored config values when not specified (automatic scheduler path)
@@ -2510,7 +2501,7 @@ def backup_all(ips=None, ssh_user=None, ssh_pass=None, show_sensitive=None, keep
         results    = []
         res_lock   = threading.Lock()
         def _do(r):
-            res = backup_router(r, ssh_user, ssh_pass, show_sensitive, keep_on_router)
+            res = backup_router(r, cred, show_sensitive, keep_on_router)
             with res_lock:
                 results.append(res)
         threads = [threading.Thread(target=_do, args=(r,), daemon=True) for r in targets]
@@ -2755,10 +2746,10 @@ def _update_router_script(ip, path, filename):
             return r["name"]
     return ""
 
-def sftp_push(ip, username, password, local_path):
-    """Push file to router /tmp/ via SFTP with provided credentials. Returns (ok, msg)."""
+def sftp_push(ip, cred, local_path):
+    """Push file to router /tmp/ via SFTP with the given credential. Returns (ok, msg)."""
     try:
-        ssh = _ssh_connect_creds(ip, username, password)
+        ssh = _ssh_connect_cred(ip, cred)
         remote = "/tmp/" + os.path.basename(local_path)
         sftp = ssh.open_sftp()
         sftp.put(local_path, remote)
@@ -2769,9 +2760,9 @@ def sftp_push(ip, username, password, local_path):
         return False, _ssh_err_str(e)
 
 def _bulk_job_worker(job_id, local_path, filename, targets):
-    """Background worker: push file to list of (ip, username, password) targets."""
-    for ip, username, password in targets:
-        ok, msg = sftp_push(ip, username, password, local_path)
+    """Background worker: push file to list of (ip, credential) targets."""
+    for ip, cred in targets:
+        ok, msg = sftp_push(ip, cred, local_path)
         name = _update_router_script(ip, local_path, filename) if ok else ""
         with JOBS_LOCK:
             JOBS[job_id]["results"].append({"ip": ip, "name": name, "ok": ok, "msg": msg})
@@ -2784,11 +2775,8 @@ def _upload_import_worker(job_id, local_path, filename, ips, run_after=True, cre
     for ip in ips:
         name = ""
         try:
-            if cred_id:
-                username, password = _resolve_cred_id(cred_id)
-            else:
-                username, password = _get_device_creds(ip)
-            ssh  = _ssh_connect_creds(ip, username, password)
+            cred = _resolve_credential(cred_id) if cred_id else _get_device_credential(ip)
+            ssh  = _ssh_connect_cred(ip, cred)
             sftp = ssh.open_sftp()
             sftp.put(local_path, remote)
             sftp.close()
@@ -5727,12 +5715,10 @@ class Handler(BaseHTTPRequestHandler):
                 ssh_pass   = params.get("ssh_pass", "")
                 cred_id    = params.get("cred_id", "")
                 group_name = params.get("group", "")
-                if cred_id:
-                    ssh_user, ssh_pass = _resolve_cred_id(cred_id)
+                cred = _resolve_credential(cred_id) if cred_id else _make_credential(ssh_user, ssh_pass)
                 if not subnet:
                     return self._json({"ok": False, "msg": "Subnet mancante"})
-                ssh_pass_enc = _encrypt(ssh_pass) if ssh_pass else ""
-                job_id, err = start_scan_job(subnet, ssh_user, ssh_pass_enc, group_name)
+                job_id, err = start_scan_job(subnet, cred, group_name)
                 if err:
                     return self._json({"ok": False, "msg": err})
                 with SCAN_JOBS_LOCK:
@@ -5744,9 +5730,9 @@ class Handler(BaseHTTPRequestHandler):
                 devices_in = params.get("devices", [])
                 # Top-level cred_id: resolve once and apply to all devices
                 top_cred_id = params.get("cred_id", "")
-                top_ssh_user, top_ssh_pass = ("", "")
-                if top_cred_id:
-                    top_ssh_user, top_ssh_pass = _resolve_cred_id(top_cred_id)
+                top_cred = _resolve_credential(top_cred_id) if top_cred_id else _make_credential()
+                top_ssh_user, top_ssh_pass = top_cred["username"], top_cred["password"]
+                top_is_key = top_cred["type"] != CRED_TYPE_PASSWORD
                 added = 0
                 for d in devices_in:
                     ip = d.get("ip", "")
@@ -5764,6 +5750,12 @@ class Handler(BaseHTTPRequestHandler):
                         mac       = d.get("mac", ""),
                     )
                     if not existed:
+                        if top_is_key:
+                            # key sets cannot be copied into the legacy password fields: link the set instead
+                            with DEVICES_LOCK:
+                                if ip in DEVICES:
+                                    DEVICES[ip]["credential_id"] = top_cred_id
+                            _save_devices()
                         if site_id_d and site_id_d in SITES:
                             with DEVICES_LOCK:
                                 if ip in DEVICES:
@@ -5990,20 +5982,16 @@ class Handler(BaseHTTPRequestHandler):
                 ips           = set(ips_param) if ips_param else None
                 cred_id_over  = _p("cred_id")
                 if cred_id_over:
-                    ssh_user_over, ssh_pass_over = _resolve_cred_id(cred_id_over)
-                    ssh_user_over = ssh_user_over or None
-                    ssh_pass_over = ssh_pass_over or None
+                    cred_over = _resolve_credential(cred_id_over)
                 else:
-                    ssh_user_over = _p("ssh_user") or None
-                    ssh_pass_over = _p("ssh_pass") or None
-                    if not (ssh_user_over and ssh_pass_over):
-                        ssh_user_over = None
-                        ssh_pass_over = None
+                    cred_over = _make_credential(_p("ssh_user"), _p("ssh_pass"))
+                if not _cred_usable(cred_over):
+                    cred_over = None
                 _bk_show_sens    = bool(params.get("show_sensitive", True))
                 _bk_keep_router  = bool(params.get("keep_on_router", False))
                 threading.Thread(
                     target=backup_all,
-                    args=(ips, ssh_user_over, ssh_pass_over, _bk_show_sens, _bk_keep_router),
+                    args=(ips, cred_over, _bk_show_sens, _bk_keep_router),
                     daemon=True
                 ).start()
                 return self._json({"ok": True})
@@ -6225,15 +6213,12 @@ class Handler(BaseHTTPRequestHandler):
             def _run_ros_check_job(jid, ip_list, _cred_id=cred_id_ck, _channel=channel_ck):
                 def _one(ip_):
                     name_ = next((rr.get("name","") for rr in ROUTERS if rr["ip"] == ip_), "")
-                    if _cred_id:
-                        u, p = _resolve_cred_id(_cred_id)
-                    else:
-                        u, p = _get_device_creds(ip_)
-                    if not u:
+                    cred = _resolve_credential(_cred_id) if _cred_id else _get_device_credential(ip_)
+                    if not cred["username"]:
                         return {"ip": ip_, "name": name_, "ok": False,
                                 "msg": "Credenziali SSH non configurate"}
                     try:
-                        ssh = _ssh_connect_creds(ip_, u, p)
+                        ssh = _ssh_connect_cred(ip_, cred)
                         if _channel:
                             _, _co, _ = ssh.exec_command(
                                 f"/system package update set channel={_channel}")
@@ -6308,15 +6293,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": False, "msg": "Nessun router selezionato"})
             def _ros_install_one(ip_, _cred_id=cred_id_in, _channel=channel_in):
                 name_ = next((rr.get("name","") for rr in ROUTERS if rr["ip"] == ip_), "")
-                if _cred_id:
-                    u, p = _resolve_cred_id(_cred_id)
-                else:
-                    u, p = _get_device_creds(ip_)
-                if not u:
+                cred = _resolve_credential(_cred_id) if _cred_id else _get_device_credential(ip_)
+                if not cred["username"]:
                     return {"ip": ip_, "name": name_, "ok": False,
                             "msg": "Credenziali SSH non configurate"}
                 try:
-                    ssh = _ssh_connect_creds(ip_, u, p)
+                    ssh = _ssh_connect_cred(ip_, cred)
                     if _channel:
                         _, _ci, _ = ssh.exec_command(
                             f"/system package update set channel={_channel}")
@@ -6371,15 +6353,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": False, "msg": "Nessun router selezionato"})
             def _ros_download_one(ip_, _channel=channel_dl):
                 name_ = next((rr.get("name","") for rr in ROUTERS if rr["ip"] == ip_), "")
-                if cred_id_dl:
-                    u, p = _resolve_cred_id(cred_id_dl)
-                else:
-                    u, p = _get_device_creds(ip_)
-                if not u:
+                cred = _resolve_credential(cred_id_dl) if cred_id_dl else _get_device_credential(ip_)
+                if not cred["username"]:
                     return {"ip": ip_, "name": name_, "ok": False,
                             "msg": "Credenziali SSH non configurate"}
                 try:
-                    ssh = _ssh_connect_creds(ip_, u, p)
+                    ssh = _ssh_connect_cred(ip_, cred)
                     if _channel:
                         _, _cd, _ = ssh.exec_command(
                             f"/system package update set channel={_channel}")
@@ -6437,11 +6416,8 @@ class Handler(BaseHTTPRequestHandler):
             def _npk_worker(_cred=cred_id_npk):
                 for ip in ips:
                     try:
-                        if _cred:
-                            u_npk, p_npk = _resolve_cred_id(_cred)
-                        else:
-                            u_npk, p_npk = _get_device_creds(ip)
-                        ssh  = _ssh_connect_creds(ip, u_npk, p_npk)
+                        cred = _resolve_credential(_cred) if _cred else _get_device_credential(ip)
+                        ssh  = _ssh_connect_cred(ip, cred)
                         sftp = ssh.open_sftp()
                         sftp.put(local_path_npk, filename_npk)
                         sftp.close()
@@ -6485,19 +6461,18 @@ class Handler(BaseHTTPRequestHandler):
             cred_id_f = form.getvalue("cred_id", "")
             username  = form.getvalue("username", "")
             password  = form.getvalue("password", "")
-            if cred_id_f:
-                username, password = _resolve_cred_id(cred_id_f)
+            cred = _resolve_credential(cred_id_f) if cred_id_f else _make_credential(username, password)
             fileitem = form["file"] if "file" in form else None
 
             if not ip:
                 return self._json({"ok": False, "msg": "IP mancante"})
             if fileitem is None or not getattr(fileitem, "filename", ""):
                 return self._json({"ok": False, "msg": "Nessun file selezionato"})
-            if not username or not password:
+            if not _cred_usable(cred):
                 return self._json({"ok": False, "msg": "Credenziali mancanti"})
 
             filename, local_path = _save_upload(fileitem)
-            ok, msg = sftp_push(ip, username, password, local_path)
+            ok, msg = sftp_push(ip, cred, local_path)
             if ok:
                 name = _update_router_script(ip, local_path, filename)
                 return self._json({"ok": True, "msg": "Caricato su " + ip + " (" + (name or ip) + ")"})
@@ -6529,7 +6504,7 @@ class Handler(BaseHTTPRequestHandler):
                     continue
                 for r in ROUTERS:
                     if r["ip"].startswith(prefix):
-                        targets.append((r["ip"], username, password))
+                        targets.append((r["ip"], _make_credential(username, password)))
 
             if not targets:
                 return self._json({"ok": False, "msg": "Nessun router trovato per le aziende selezionate"})
