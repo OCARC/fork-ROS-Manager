@@ -850,6 +850,8 @@ _T_EN: dict = {
     "Esegui lo script subito dopo il caricamento": "Run the script right after upload",
     "REAL TIME MONITORING ATTIVO": "REAL TIME MONITORING ACTIVE",
     "Disattiva e scarica": "Deactivate and download",
+    "Utenti creati (prima esecuzione):": "Users created (first run):",
+    "errore non catturato:": "uncaught error:",
     "Backup completo (show-sensitive — include password e chiavi)":
         "Full backup (show-sensitive — includes passwords, keys, etc.)",
     # ── Keep some already-correct English strings (no-op) ────
@@ -1609,7 +1611,7 @@ def _load_users():
     with open(USERS_FILE, "w") as f:
         json.dump(users, f, indent=2)
     print("=" * 50)
-    print("Utenti creati (prima esecuzione):")
+    print(T("Utenti creati (prima esecuzione):"))
     print(f"  admin  → {DEFAULT_ADMIN_PASS}")
     print(f"  viewer → {DEFAULT_VIEWER_PASS}")
     print("=" * 50)
@@ -2534,7 +2536,7 @@ def backup_monitor():
                 backup_all()
         except Exception as e:
             app_log("backup", "error", f"Scheduler: errore non catturato — {e}")
-            print(f"[backup_monitor] errore non catturato: {e}")
+            print(f"[backup_monitor] {T('errore non catturato:')} {e}")
 
 def backup_index_by_router():
     """Return {key: latest_mtime_ts} from files in BACKUP_DIR.
@@ -15408,7 +15410,7 @@ def _kill_existing_instance():
             if p != my_pid:
                 try:
                     os.kill(int(p), signal.SIGTERM)
-                    print(f"ROSM — istanza precedente terminata (PID {p}), riavvio...")
+                    print(f"ROSM — {T('istanza precedente terminata')} (PID {p}), {T('riavvio...')}")
                     killed = True
                 except ProcessLookupError:
                     pass
