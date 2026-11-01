@@ -16,6 +16,3 @@ ping_history.json
 state.json
 users.json
 uploads/
-
-# RouterOS script files
-*.rcs
