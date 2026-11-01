@@ -93,12 +93,13 @@ documentation identifies it as an unmaintained copy of `cgi`.
 3. **Parser migration — implemented.** A shared parser normalizes form and
    file values for the existing routes. The `cgi` import and `FieldStorage`
    access have been removed.
-4. **Validation — partially complete.** Ten standard-library `unittest`
-   cases cover parser fields/files, duplicate values, malformed bodies,
-   content-length validation, oversize rejection, source import removal, and
-   temporary-file cleanup. Full route-level tests and application startup on
-   Python 3.13+ and the oldest supported runtime remain outstanding; the local
-   Python 3.14.7 environment lacks the existing `paramiko` dependency.
+4. **Validation — user-reported successful.** Ten standard-library
+   `unittest` cases cover parser fields/files, duplicate values, malformed
+   bodies, content-length validation, oversize rejection, source import
+   removal, and temporary-file cleanup. The user reports real-world testing
+   was successful. Tested Python versions and specific end-to-end cases were
+   not provided. The local Python 3.14.7 environment lacked the existing
+   `paramiko` dependency, so local full application startup was not verified.
 5. **Release integration — pending.** Restore authoritative dependency,
    installer, CI, and user-facing Python prerequisite files before claiming
    packaged macOS/Windows compatibility.
