@@ -298,7 +298,7 @@ _T_EN: dict = {
     # ── Login ────────────────────────────────────────────────
     "Accesso": "Login", "ROSM — Accesso": "ROSM — Login",
     "Username": "Username", "Password": "Password",
-    "Accedi →": "Sign in →", "Sessione 24h": "Session 24h",
+    "Accedi →": "Sign in →",
     "Credenziali non valide. Riprova.": "Invalid credentials. Try again.",
     "Accesso negato: richiesto ruolo Admin": "Access denied: Admin role required",
     "Password dimenticata?": "Forgot password?",
@@ -319,7 +319,7 @@ _T_EN: dict = {
     "Stato": "Status", "Nome": "Name", "IP": "IP", "Modello": "Model",
     "Versione": "Version", "Uptime": "Uptime", "Tag": "Tags",
     "Sito": "Site", "Porte Aperte": "Open Ports",
-    "Ultimo Online": "Last Online", "SSH": "SSH", "Azioni": "Actions",
+    "SSH": "SSH", "Azioni": "Actions",
     "ONLINE": "ONLINE", "OFFLINE": "OFFLINE",
     "Credenziali SSH mancanti — clicca per configurare": "SSH credentials missing — click to configure",
     "Modifica credenziali SSH": "Edit SSH credentials",
@@ -328,14 +328,12 @@ _T_EN: dict = {
     "Cerca…": "Search…", "IP…": "IP…", "Nome…": "Name…",
     "Modello…": "Model…", "Tag/Gruppo…": "Tag/Group…", "Sito…": "Site…",
     "Pulisci filtri": "Clear filters",
-    "Esci": "Log out",
     "Ping tutti i router": "Ping all routers",
     "SSH su tutti: nome, modello, versione": "SSH all: name, model, version",
     "Esporta tabella visibile come CSV": "Export visible table as CSV",
     "Attiva Real Time Monitoring (1 ping/sec)": "Enable Real Time Monitoring (1 ping/sec)",
     "Real Time Monitoring attivo — clicca per disattivare": "Real Time Monitoring active — click to disable",
     "RTM Attivo": "RTM Active",
-    "Ricarica la pagina per aggiornare l'elenco": "Reload the page to refresh the list",
     "Clicca per rimuovere": "Click to remove",
     "Clicca per aggiungere": "Click to add",
     "Elimina tag predefinito": "Remove preset tag",
@@ -414,7 +412,6 @@ _T_EN: dict = {
     "Password SSH": "SSH Password",
     "Nessun set credenziali.": "No credential sets.",
     "Utilizzo": "Usage", "Credenziali": "Credentials",
-    "Assegnazione ai Siti": "Site Assignment",
     "Credenziali assegnate": "Assigned credentials",
     "Nessun sito configurato.": "No sites configured.",
     "-- Credenziali del singolo router --": "-- Single router credentials --",
@@ -626,7 +623,6 @@ _T_EN: dict = {
     "Nessun log disponibile.": "No logs available.",
     # ── Home page cards ───────────────────────────────────────
     "sedi configurate": "sites configured",
-    "archivi salvati": "archives saved",
     "Gestisci accessi e ruoli": "Manage access and roles",
     "Scansiona la rete per trovare router RouterOS": "Scan the network to find RouterOS routers",
     "Gestisci sedi e topologia di rete": "Manage sites and network topology",
@@ -764,6 +760,94 @@ _T_EN: dict = {
     "creds: predefinite": "creds: default",
     "Ricarica la pagina per aggiornare l'elenco": "Reload the page to update the list",
     "Dimensione totale": "Total size",
+    # ── API / server messages (wrapped in T() at the call site) ──
+    "Subnet non valida": "Invalid subnet",
+    "Subnet mancante": "Subnet is missing",
+    "IP mancante": "IP is missing",
+    "JSON non valido nel body": "Invalid JSON in request body",
+    "colonna non trovata": "Column not found",
+    "nome richiesto": "Name is required",
+    "sede non trovata": "Site not found",
+    "ips deve essere una lista": "ips must be a list",
+    "Backup già in corso": "A backup is already running",
+    "File non valido": "Invalid file",
+    "nome, username e password richiesti": "Name, username and password are required",
+    "Codice di recupero non valido.": "Invalid recovery code.",
+    "Set non trovato.": "Set not found.",
+    "Endpoint non trovato": "Endpoint not found",
+    "Nessun router selezionato": "No router selected",
+    "Nessun file selezionato": "No file selected",
+    "Credenziali SSH non configurate": "SSH credentials are not configured",
+    "Update avviato — il router si riavvierà": "Update started — the router will reboot",
+    "Download completato — pronto per installazione": "Download complete — ready to install",
+    "Pacchetto caricato — riavvio in corso": "Package uploaded — rebooting",
+    "Dati aziende non validi": "Invalid company data",
+    "Nessun router trovato per le aziende selezionate": "No routers found for the selected companies",
+    "Riavvio in corso…": "Restarting…",
+    "Aggiornamento fallito:": "Update failed:",
+    "File scaricato troppo piccolo": "Downloaded file is too small",
+    "aggiornamento annullato": "update cancelled",
+    "Campo 'version' mancante in version.json. "
+    "Verifica che il repo contenga il file version.json corretto.":
+        "The 'version' field is missing from version.json. "
+        "Check that the repository contains the correct version.json file.",
+    "version.json non valido o non trovato. "
+    "Assicurati che il file esista nel repository e sia JSON valido.":
+        "version.json is invalid or was not found. "
+        "Make sure the file exists in the repository and contains valid JSON.",    "non corretta.": "is incorrect.",
+    "Prima versione distribuita ufficialmente: licenza GPLv3, repository pubblico su GitHub, pacchetti scaricabili da chiunque tramite GitHub Releases.":
+        "First official release: GPLv3 license, public GitHub repository, packages that anyone can download from GitHub Releases.",
+    # ── Page-wide JS / UI strings ────────────────────────────
+    "Seleziona un file.": "Select a file.",
+    "Seleziona un file .rsc.": "Select an .rsc file.",
+    "Inserisci username.": "Enter a username.",
+    "Inserisci password.": "Enter a password.",
+    "Connessione…": "Connecting…",
+    "Credenziali mancanti per": "Missing credentials for",
+    "router  OK": "routers  OK",
+    "Nessuna colonna personalizzata": "No custom columns",
+    "Inserisci nome e comando SSH": "Enter a name and SSH command",
+    "Rimuovere questa colonna?": "Remove this column?",
+    "Seleziona almeno un router.": "Select at least one router.",
+    "router selezionati": "routers selected",
+    "Seleziona almeno un device.": "Select at least one device.",
+    "Seleziona una sede.": "Select a site.",
+    "Nome obbligatorio.": "Name is required.",
+    "-- Seleziona sede --": "-- Select site --",
+    "Inserisci una subnet.": "Enter a subnet.",
+    "Completato —": "Completed —",
+    "dispositivi trovati su": "devices found on",
+    "' trovati'": "' found'",
+    "Seleziona un'azienda.": "Select a company.",
+    "0 siti · 0 router": "0 sites · 0 routers",
+    "Nessun dispositivo selezionato.": "No device selected.",
+    "Set credenziali non trovato.": "Credential set not found.",
+    "risposta non valida": "invalid response",
+    "Errore di rete:": "Network error:",
+    "Credenziali: automatiche (sito / router)": "Credentials: automatic (site / router)",
+    "Nessun router ONLINE nel target selezionato — operazione annullata.":
+        "No ONLINE routers in the selected target — operation cancelled.",
+    "tutti i router ONLINE (": "all ONLINE routers (",
+    "Il server ha rifiutato la richiesta:": "The server rejected the request:",
+    "errore sconosciuto": "unknown error",
+    "Nessun router raggiunto (0 target online).": "No routers reached (0 targets online).",
+    "Errore durante il polling:": "Polling error:",
+    "Backup completato con successo:": "Backup completed successfully:",
+    "Backup fallito: 0/": "Backup failed: 0/",
+    "router completati": "routers completed",
+    "Lascia copia del backup anche sul router": "Also keep a copy of the backup on the router",
+    "Creane uno nel Credential Manager →": "Create one in the Credential Manager →",
+    "Creane uno nel Credential Manager": "Create one in the Credential Manager",
+    "Rivela credenziali con recovery code": "Reveal credentials with recovery code",
+    "L'utente": "User",
+    "non ha i permessi per questa azione.": "does not have permission to perform this action.",
+    "(tu)": "(you)",
+    "es. utente1": "e.g. user1",
+    "Nessun sito": "No site",
+    "Automatico: usa le credenziali del sito o del router": "Automatic: use the site or router credentials",
+    "Esegui lo script subito dopo il caricamento": "Run the script right after upload",
+    "REAL TIME MONITORING ATTIVO": "REAL TIME MONITORING ACTIVE",
+    "Disattiva e scarica": "Deactivate and download",
     # ── Keep some already-correct English strings (no-op) ────
     "Home": "Home", "Dashboard": "Dashboard",
     "Network Discovery": "Network Discovery",
@@ -5376,7 +5460,7 @@ class Handler(BaseHTTPRequestHandler):
         user   = USERS.get(uname, {})
         if not _verify_pwd(cur, user.get("hash", "")):
             return self.respond(self.render_settings_page(session,
-                ctx={"error": T("Password attuale") + " non corretta."}))
+                ctx={"error": T("Password attuale") + " " + T("non corretta.")}))
         if len(new_pw) < 8:
             return self.respond(self.render_settings_page(session,
                 ctx={"error": "Password troppo corta (min 8 caratteri)."}))
@@ -5501,7 +5585,7 @@ class Handler(BaseHTTPRequestHandler):
             app_log("system", "info",
                     f"Riavvio applicazione richiesto da '{_rs_username}' (ruolo: {_rs_role})")
             _save_app_log()
-            body = json.dumps({"ok": True, "msg": "Riavvio in corso…"}).encode()
+            body = json.dumps({"ok": True, "msg": T("Riavvio in corso…")}).encode()
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.send_header("Cache-Control", "no-store")
@@ -5553,7 +5637,8 @@ class Handler(BaseHTTPRequestHandler):
                 # 2. Basic sanity check
                 if len(_new_bytes) < 10_000:
                     raise ValueError(
-                        f"File scaricato troppo piccolo ({len(_new_bytes)} B) — aggiornamento annullato")
+                        f"{T('File scaricato troppo piccolo')} ({len(_new_bytes)} B) — "
+                        f"{T('aggiornamento annullato')}")
                 # 3. Parse new version from downloaded content
                 _ver_m = re.search(r'APP_VERSION\s*=\s*["\']([^"\']+)["\']',
                                    _new_bytes[:16384].decode(errors="replace"))
@@ -5569,10 +5654,12 @@ class Handler(BaseHTTPRequestHandler):
                         f"Backup: {_bak_path}")
                 _save_app_log()
             except Exception as _updu_exc:
-                return self._json({"ok": False, "msg": f"Aggiornamento fallito: {_updu_exc}"})
+                return self._json({"ok": False, "msg": f"{T('Aggiornamento fallito:')} {_updu_exc}"})
             # 5. Send response, then restart
             _updu_body = json.dumps({"ok": True,
-                "msg": f"Aggiornamento a v{_new_ver} installato. Riavvio in corso…",
+                "msg": (f"Aggiornamento a v{_new_ver} installato. Riavvio in corso…"
+                        if LANGUAGE == "it" else
+                        f"Updated to v{_new_ver}. Restarting…"),
                 "version": _new_ver}).encode()
             self.send_response(200)
             self.send_header("Content-type", "application/json")
@@ -7726,7 +7813,7 @@ html,body{{height:100%;margin:0;display:flex;align-items:center;justify-content:
       <div class="wl-rec-title">{_rec_title}</div>
       <div class="wl-rec-code" id="rec-code" title="Click to select">{rec}</div>
       <div class="wl-rec-warn">{_rec_warn}</div>
-      <button class="wl-copy-btn" onclick="copyRec()">Copia</button>
+      <button class="wl-copy-btn" onclick="copyRec()">{"Copy" if LANGUAGE != "it" else "Copia"}</button>
     </div>
     <ul class="wl-tips">{tips_html}</ul>
     <div class="wl-actions">
@@ -11992,6 +12079,9 @@ function topoSavePos() {{
 
 
     def _json(self, data):
+        if LANGUAGE != "it" and isinstance(data, dict):
+            data = {k: (T(v) if k in ("msg", "error") and isinstance(v, str) else v)
+                    for k, v in data.items()}
         body = json.dumps(data).encode()
         self.send_response(200)
         self.send_header("Content-type", "application/json")

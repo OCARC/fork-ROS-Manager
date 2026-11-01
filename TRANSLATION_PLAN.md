@@ -43,6 +43,15 @@ Scanned all string literals after the dictionary for Italian vocabulary or accen
 - **No retroactive log migration.** Previously stored log entries are left unchanged. The existing display-time translation of log messages stays as is; new dictionary entries for log messages apply to it automatically.
 - **Natural English style**, not literal. Follow existing mappings for established terms such as `Sito`, `Pianificazione` and `Credenziali`.
 
+## Progress
+
+- Inventory rebuilt to ignore text that already has an English alternative (`lang_en` / `LANGUAGE` ternaries); this cut the ~250 heuristic candidates down to the real gaps (~110 strings, 75 of them genuine after review).
+- Added ~85 entries to `_T_EN` (API messages, page-wide JS strings, dashboard/backup/discovery UI text).
+- `_json()` now translates `msg` / `error` values through `T()` for non-Italian, so existing and future static API messages only need a dictionary entry. Dynamic messages (update flow, password error) were converted to `T()` / language-aware f-strings.
+- Removed 6 conflicting duplicate dictionary keys, keeping the values that were already effective (last one won).
+- Added `tests/test_translations.py` (conflicting duplicates, short-key guard, required entries, every static `T("...")` key has an entry).
+- Still to do: manual UI walkthrough with `language: en` for Guide, tour, Users, Site Manager, Settings, update dialog and log page. Dynamically built strings that the heuristic cannot see may remain.
+
 ## Acceptance criteria
 
 - With `language: en`, no Italian text remains in any UI-visible page, dialog, toast or API message, except items explicitly marked intentionally Italian.
