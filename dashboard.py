@@ -848,6 +848,8 @@ _T_EN: dict = {
     "Esegui lo script subito dopo il caricamento": "Run the script right after upload",
     "REAL TIME MONITORING ATTIVO": "REAL TIME MONITORING ACTIVE",
     "Disattiva e scarica": "Deactivate and download",
+    "Backup completo (show-sensitive — include password e chiavi)":
+        "Full backup (show-sensitive — includes passwords, keys, etc.)",
     # ── Keep some already-correct English strings (no-op) ────
     "Home": "Home", "Dashboard": "Dashboard",
     "Network Discovery": "Network Discovery",
