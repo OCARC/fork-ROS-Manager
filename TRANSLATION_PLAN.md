@@ -50,6 +50,8 @@ Scanned all string literals after the dictionary for Italian vocabulary or accen
 - `_json()` now translates `msg` / `error` values through `T()` for non-Italian, so existing and future static API messages only need a dictionary entry. Dynamic messages (update flow, password error) were converted to `T()` / language-aware f-strings.
 - Removed 6 conflicting duplicate dictionary keys, keeping the values that were already effective (last one won).
 - Added `tests/test_translations.py` (conflicting duplicates, short-key guard, required entries, every static `T("...")` key has an entry).
+- Console output: first-run user banner and two other startup/monitor prints now go through `T()`.
+- Activity log: plain substring keys cannot match messages with embedded values (e.g. `ROSM v{ver} avviato su porta 8080`), and short connectors like ` su ` are unsafe as keys. Added `_LOG_PATTERNS` / `_translate_log_msg()` (full-match regexes covering the 22 dynamic `app_log` messages), applied on the log page before the existing substring fallback. Stored entries are unchanged, so old and new entries both display in English. The debug-info export keeps raw data. Tests cover sample translations, Italian passthrough and fixed-text messages.
 - Still to do: manual UI walkthrough with `language: en` for Guide, tour, Users, Site Manager, Settings, update dialog and log page. Dynamically built strings that the heuristic cannot see may remain.
 
 ## Acceptance criteria
