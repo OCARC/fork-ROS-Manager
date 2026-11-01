@@ -70,3 +70,48 @@ class TranslationDictionaryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LogMessageTranslationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import re
+        tree = _tree()
+        cls.ns = {"re": re, "LANGUAGE": "en"}
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") in ("_LOG_PATTERNS", "_LOG_PATTERNS_RE"):
+                exec(compile(ast.Module([node], []), DASHBOARD, "exec"), cls.ns)
+            if isinstance(node, ast.FunctionDef) and node.name == "_translate_log_msg":
+                exec(compile(ast.Module([node], []), DASHBOARD, "exec"), cls.ns)
+        cls.tr = staticmethod(cls.ns["_translate_log_msg"])
+
+    def test_samples(self):
+        cases = {
+            "Ping completato — 3 ONLINE, 1 OFFLINE su 4": "Ping completed — 3 ONLINE, 1 OFFLINE out of 4",
+            "Backup salvato: a.rsc (1,234 bytes) [cifrato]": "Backup saved: a.rsc (1,234 bytes) [encrypted]",
+            "Backup salvato: a.rsc (12 bytes)": "Backup saved: a.rsc (12 bytes)",
+            "Backup completato — 2 OK, 1 errori su 3": "Backup completed — 2 OK, 1 errors out of 3",
+            "Real Time Monitoring attivato da 'bob'": "Real Time Monitoring enabled by 'bob'",
+            "ROSM v1.2 avviato su porta 8080": "ROSM v1.2 started on port 8080",
+            "Bind su 0.0.0.0:8080 fallito — boom": "Bind on 0.0.0.0:8080 failed — boom",
+            "Connessione SSH avviata": "SSH connection started",
+        }
+        for it, en in cases.items():
+            self.assertEqual(self.tr(it), en)
+
+    def test_unknown_and_italian_mode(self):
+        self.assertEqual(self.tr("Something else"), "Something else")
+        self.ns["LANGUAGE"] = "it"
+        try:
+            self.assertEqual(self.tr("Ping avviato — 3 dispositivi"), "Ping avviato — 3 dispositivi")
+        finally:
+            self.ns["LANGUAGE"] = "en"
+
+    def test_every_static_app_log_message_has_a_pattern(self):
+        rx = self.ns["_LOG_PATTERNS_RE"]
+        for node in ast.walk(_tree()):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "app_log" and len(node.args) >= 3:
+                m = node.args[2]
+                if isinstance(m, ast.Constant) and isinstance(m.value, str):
+                    if m.value == "Output vuoto o troppo corto" or m.value.startswith(("Connessione", "Scheduler")):
+                        self.assertTrue(any(r.fullmatch(m.value) for r, _ in rx), m.value)

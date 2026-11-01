@@ -869,6 +869,58 @@ def T(s: str) -> str:
         return s
     return _T_EN.get(s, s)
 
+# Activity-log messages carry embedded values, so they are matched as patterns
+# at display time (stored entries stay as written). Order does not matter:
+# each pattern must match the whole message.
+_LOG_PATTERNS = [
+    (r"Connessione SSH avviata", "SSH connection started"),
+    (r"Dati aggiornati — modello: (.*), ROS: (.*), uptime: (.*)",
+     r"Data updated — model: \1, ROS: \2, uptime: \3"),
+    (r"Errore SSH: (.*)", r"SSH error: \1"),
+    (r"Output vuoto o troppo corto", "Empty or too-short output"),
+    (r"Backup salvato: (.*) \(([\d,.]+) bytes\)( \[cifrato\])?",
+     lambda m: f"Backup saved: {m.group(1)} ({m.group(2)} bytes)"
+               + (" [encrypted]" if m.group(3) else "")),
+    (r"Errore backup: (.*)", r"Backup error: \1"),
+    (r"Backup avviato — (\d+) router target", r"Backup started — \1 target routers"),
+    (r"Backup completato — (\d+) OK, (\d+) errori su (\d+)",
+     r"Backup completed — \1 OK, \2 errors out of \3"),
+    (r"Scheduler: backup in corso \(avviato manualmente\) — salto il ciclo automatico",
+     "Scheduler: manual backup in progress — skipping the automatic cycle"),
+    (r"Scheduler: avvio ciclo automatico — (\d+) router ONLINE",
+     r"Scheduler: starting automatic cycle — \1 ONLINE routers"),
+    (r"Scheduler: errore non catturato — (.*)", r"Scheduler: uncaught error — \1"),
+    (r"Ping avviato — (\d+) dispositivi", r"Ping started — \1 devices"),
+    (r"Ping completato — (\d+) ONLINE, (\d+) OFFLINE su (\d+)",
+     r"Ping completed — \1 ONLINE, \2 OFFLINE out of \3"),
+    (r"Canale aggiornamenti impostato su '(.*)' da '(.*)'\.",
+     r"Update channel set to '\1' by '\2'."),
+    (r"Real Time Monitoring (attivato|disattivato) da '(.*)'",
+     lambda m: f"Real Time Monitoring {'enabled' if m.group(1) == 'attivato' else 'disabled'}"
+               f" by '{m.group(2)}'"),
+    (r"Riavvio applicazione richiesto da '(.*)' \(ruolo: (.*)\)",
+     r"Application restart requested by '\1' (role: \2)"),
+    (r"Aggiornamento a v(\S+) installato da '(.*)'\. Backup: (.*)",
+     r"Updated to v\1, installed by '\2'. Backup: \3"),
+    (r"RouterOS upgrade install avviato su (.*)", r"RouterOS upgrade install started on \1"),
+    (r"RouterOS download avviato su (.*)", r"RouterOS download started on \1"),
+    (r"ROSM v(\S+) riavviato su porta 8080 \(richiesto da: '(.*)'\)",
+     r"ROSM v\1 restarted on port 8080 (requested by: '\2')"),
+    (r"ROSM v(\S+) avviato su porta 8080", r"ROSM v\1 started on port 8080"),
+    (r"Bind su (.*) fallito — (.*)", r"Bind on \1 failed — \2"),
+]
+_LOG_PATTERNS_RE = [(re.compile(p, re.S), r) for p, r in _LOG_PATTERNS]
+
+def _translate_log_msg(msg: str) -> str:
+    """Translate a stored Italian activity-log message when the UI is not Italian."""
+    if LANGUAGE == "it" or not isinstance(msg, str):
+        return msg
+    for rx, repl in _LOG_PATTERNS_RE:
+        m = rx.fullmatch(msg)
+        if m:
+            return repl(m) if callable(repl) else m.expand(repl)
+    return msg
+
 def _set_language(lang: str):
     global LANGUAGE
     LANGUAGE = lang
@@ -14182,6 +14234,7 @@ _draw();
                 name = e.get("name", "")
                 msg  = e.get("msg", "")
                 if LANGUAGE != "it":
+                    msg = _translate_log_msg(msg)
                     for it_s, en_s in _T_EN.items():
                         if it_s != en_s and it_s in msg:
                             msg = msg.replace(it_s, en_s)
