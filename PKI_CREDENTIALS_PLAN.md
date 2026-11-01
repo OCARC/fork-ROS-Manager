@@ -88,3 +88,5 @@ override creds (~5889), credential reveal (~5960), RouterOS check/install/downlo
 - **Reveal never shows a private key.** The reveal action returns no key material for `ssh_key` sets. If a display is ever needed, show the fingerprint only.
 - **Key-based sets can be device specific.** A key set is a normal named set, so it can be assigned to a single device (`credential_id`) as well as to a site. The legacy per-device `ssh_user` / `ssh_pass_enc` fields stay password-only.
 - **Phase 1 is paste/upload only.** No key-pair generation in the app, so phase 5 is dropped from this branch and moved to future work.
+
+- Phase 6 (docs) done: README feature bullet and a CODE_OVERVIEW_EN section. Remaining: manual key login test against a RouterOS device (not run yet).
