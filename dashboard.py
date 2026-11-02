@@ -3577,8 +3577,10 @@ th.desc::after { content: " ▼"; font-size: 8px; color: var(--accent); }
 MAIN_JS_TEMPLATE = r"""
 var ROSM_LANG='{rosm_lang}';
 {js_i18n}
-// =========================================================// Modal helpers
-// =========================================================function openModal(id)  { document.getElementById(id).classList.add('open'); }
+// ================================================================
+// Modal helpers
+// ================================================================
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
   if (id === 'backdropUpload') {
@@ -3703,8 +3705,10 @@ function _pollBulkJob(job_id,total,bar,msg,btn) {
   },600);
 }
 
-// =========================================================// Live DOM update
-// =========================================================var lastState = {};
+// ================================================================
+// Live DOM update
+// ================================================================
+var lastState = {};
 var DASH = '<span style="color:var(--text3)">—</span>';
 function _pill(c,l){return '<span class="pill pill-'+c+'">'+l+'</span>';}
 function renderStatus(s){if(s==='ONLINE')return _pill('green','ONLINE');if(s==='OFFLINE')return _pill('red','OFFLINE');return _pill('gray','—');}
@@ -3731,8 +3735,10 @@ function _renderPortsHtml(ports){
   return out+'</span>';
 }
 
-// =========================================================// Change notifications (MAC mismatch etc.)
-// =========================================================var _seenChanges = 0;
+// ================================================================
+// Change notifications (MAC mismatch etc.)
+// ================================================================
+var _seenChanges = 0;
 function _handleChangeLog(entries) {
   if (!entries || !entries.length) return;
   var newEntries = entries.slice(_seenChanges);
@@ -3770,8 +3776,10 @@ function _showChangeToast(e) {
   setTimeout(function() { if (t.parentNode) t.remove(); }, 60000);
 }
 
-// =========================================================// Status-change toasts (ONLINE / OFFLINE)
-// =========================================================var _statusToastSuppressInit = true;  // ignore the first full-state snapshot
+// ================================================================
+// Status-change toasts (ONLINE / OFFLINE)
+// ================================================================
+var _statusToastSuppressInit = true;  // ignore the first full-state snapshot
 (function(){ setTimeout(function(){ _statusToastSuppressInit=false; }, 4000); })();
 
 function _showStatusToast(ip, name, oldStatus, newStatus) {
@@ -3802,8 +3810,10 @@ function _showStatusToast(ip, name, oldStatus, newStatus) {
   setTimeout(function() { if (t.parentNode) t.remove(); }, 12000);
 }
 
-// =========================================================// Column resize
-// =========================================================function initColResize() {
+// ================================================================
+// Column resize
+// ================================================================
+function initColResize() {
   var ths = document.querySelectorAll('thead tr.label-row th');
   ths.forEach(function(th) {
     var handle = document.createElement('div');
@@ -3912,8 +3922,10 @@ function _updStat(id,ips,color){
   }).join('')+(ips.length>6?'<span style="color:var(--text3);font-size:9px;">+' +(ips.length-6)+'</span>':'');
 }
 
-// =========================================================// Sparkline (online/offline over time)
-// =========================================================function renderSparkline(history) {
+// ================================================================
+// Sparkline (online/offline over time)
+// ================================================================
+function renderSparkline(history) {
   var el = document.getElementById('sparkline');
   if (!el || !history.length) return;
   var W=96, H=28, pad=2;
@@ -3940,8 +3952,10 @@ function _updStat(id,ips,color){
   el.title = 'Online: '+last.online+'/'+last.total+' — '+last.ts;
 }
 
-// =========================================================// SSE live update (replaces polling)
-// =========================================================(function startSSE(){
+// ================================================================
+// SSE live update (replaces polling)
+// ================================================================
+(function startSSE(){
   var es = new EventSource('/api/events');
   es.onmessage = function(e){
     try { applyState(JSON.parse(e.data)); } catch(ex){}
@@ -3951,8 +3965,10 @@ function _updStat(id,ips,color){
   };
 })();
 
-// =========================================================// Scroll helpers
-// =========================================================function scrollToRow(ip){var el=document.getElementById('row-'+ip.replaceAll('.', '-'));if(el)el.scrollIntoView({behavior:'smooth',block:'center'});}
+// ================================================================
+// Scroll helpers
+// ================================================================
+function scrollToRow(ip){var el=document.getElementById('row-'+ip.replaceAll('.', '-'));if(el)el.scrollIntoView({behavior:'smooth',block:'center'});}
 (function(){
   var wrap=document.getElementById('tableWrap');
   var saved=sessionStorage.getItem('scrollTop');
@@ -3962,8 +3978,10 @@ function _updStat(id,ips,color){
 })();
 window.addEventListener('beforeunload',function(){var wrap=document.getElementById('tableWrap');if(wrap)sessionStorage.setItem('scrollTop',wrap.scrollTop);});
 
-// =========================================================// Filter
-// =========================================================function filterTable(){
+// ================================================================
+// Filter
+// ================================================================
+function filterTable(){
   var active=[];
   var inputs=document.querySelectorAll('.filter');
   for(var i=0;i<inputs.length;i++){
@@ -4011,9 +4029,13 @@ function clearFilters(){
   filterTable();
 })();
 
-// =========================================================// Sort
-// =========================================================// =========================================================// Row selection + bulk actions
-// =========================================================var _bulkIPs = [];
+// ================================================================
+// Sort
+// ================================================================
+// ================================================================
+// Row selection + bulk actions
+// ================================================================
+var _bulkIPs = [];
 
 function toggleSelectAll(cb){
   document.querySelectorAll('.row-cb').forEach(function(c){
@@ -4104,8 +4126,10 @@ function deselectAll(){
   _updateBulkBar();
 }
 
-// =========================================================// Sort (col 0 = checkbox, skip it; sort uses actual cell index)
-// =========================================================function sortTable(th,n){
+// ================================================================
+// Sort (col 0 = checkbox, skip it; sort uses actual cell index)
+// ================================================================
+function sortTable(th,n){
   var tbody=document.querySelector('tbody');
   if(!tbody) return;
   var asc=th.getAttribute('data-asc')!=='true';
@@ -4134,8 +4158,10 @@ function deselectAll(){
   if(wrap) wrap.scrollTop=0;
 }
 
-// =========================================================// CSV Export
-// =========================================================function exportCSV(){
+// ================================================================
+// CSV Export
+// ================================================================
+function exportCSV(){
   // Derive dynamic column label from the selector
   var dynaKey = typeof DYNA_COL !== 'undefined' ? DYNA_COL : 'packages';
   var dynaSel = document.getElementById('dynaColSelect');
@@ -4175,8 +4201,10 @@ function deselectAll(){
   a.click();
 }
 
-// =========================================================// Configurable column
-// =========================================================var DYNA_OPTIONS = {
+// ================================================================
+// Configurable column
+// ================================================================
+var DYNA_OPTIONS = {
   'packages':   {label:'ROS Ver.',     get:function(r){return r.packages||'';}},
   'note_full':  {label:'System Note',  get:function(r){return r.note_full||'';}},
   'uptime':     {label:'Uptime',       get:function(r){return r.uptime||'';}},
@@ -4213,8 +4241,10 @@ function setDynaCol(val) {
   });
 }
 
-// =========================================================// Custom SSH columns
-// =========================================================var _customColsData = {};  // {ip: {col_id: value}}
+// ================================================================
+// Custom SSH columns
+// ================================================================
+var _customColsData = {};  // {ip: {col_id: value}}
 
 function _applyCustomCols(cols, colData) {
   // Sync DYNA_OPTIONS with custom cols
@@ -4293,8 +4323,10 @@ async function refreshCustomCol(id) {
     body:JSON.stringify({id:id})});
 }
 
-// =========================================================// Remove device
-// =========================================================async function removeDevice(ip) {
+// ================================================================
+// Remove device
+// ================================================================
+async function removeDevice(ip) {
   if(!confirm('Rimuovere '+ip+' dalla lista?')) return;
   try {
     await fetch('/api/device/remove',{method:'POST',
@@ -4310,8 +4342,10 @@ async function refreshCustomCol(id) {
   } catch(e){ alert('Errore: '+e); }
 }
 
-// =========================================================// Predefined tags + Tag editor
-// =========================================================var PREDEFINED_TAGS = {predefined_tags_js};
+// ================================================================
+// Predefined tags + Tag editor
+// ================================================================
+var PREDEFINED_TAGS = {predefined_tags_js};
 var _tagIP       = '';
 var _assignedTags = [];
 
@@ -12678,7 +12712,8 @@ function topoSavePos() {{
 <style>
 {COMMON_CSS}
 
-/* =========================================================   Layout: flex column — topbar fisso, tabella scrollabile
+/* ================================================================
+   Layout: flex column — topbar fisso, tabella scrollabile
    Sovrascrive COMMON_CSS dove necessario
    ================================================================ */
 html {{ height: 100%; }}
