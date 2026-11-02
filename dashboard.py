@@ -12520,9 +12520,15 @@ function topoSavePos() {{
 
 
     def _json(self, data, status=200):
-        if LANGUAGE != "it" and isinstance(data, dict):
-            data = {k: (T(v) if k in ("msg", "error") and isinstance(v, str) else v)
-                    for k, v in data.items()}
+        if LANGUAGE != "it":
+            def _tr(o):
+                if isinstance(o, dict):
+                    return {k: (T(v) if k in ("msg", "error") and isinstance(v, str)
+                                else _tr(v)) for k, v in o.items()}
+                if isinstance(o, list):
+                    return [_tr(i) for i in o]
+                return o
+            data = _tr(data)
         body = json.dumps(data).encode()
         self.send_response(status)
         self.send_header("Content-type", "application/json")
