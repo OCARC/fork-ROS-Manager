@@ -13870,7 +13870,7 @@ _draw();
             card(T("Versione firmware RouterOS"),
                  bar_chart(fw_dist, [PALETTE[(i+2)%len(PALETTE)] for i in range(12)],
                            label_width=90,
-                           link=lambda v: "/upgrade?version=" + urllib.parse.quote(v, safe="")) +
+                           link=lambda v: "/upgrade?version=" + urllib.parse.quote(v, safe=""))) +
             card(T("Distribuzione uptime"),
                  bar_chart(list(up_bkts.items()),
                            ["#4f8ef7","#22c55e","#f59e0b","#f78a4f","#ef4444","#3f4558"])) +
