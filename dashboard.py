@@ -6732,21 +6732,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": False, "msg": "Nessun router selezionato"})
             def _ros_reboot_one(ip_):
                 name_ = next((rr.get("name","") for rr in ROUTERS if rr["ip"] == ip_), "")
-                if cred_id_rb:
-                    u, p = _resolve_cred_id(cred_id_rb)
-                else:
-                    u, p = _get_device_creds(ip_)
-                if not u:
+                cred = _resolve_credential(cred_id_rb) if cred_id_rb else _get_device_credential(ip_)
+                if not cred["username"]:
                     return {"ip": ip_, "name": name_, "ok": False,
                             "msg": "Credenziali SSH non configurate"}
                 try:
-                    ssh = _ssh_connect_creds(ip_, u, p)
+                    ssh = _ssh_connect_cred(ip_, cred)
                     _, out, _ = ssh.exec_command("/system package update print")
-                    out.channel.settimeout(15)
-                    try:
-                        status = out.read().decode(errors="ignore")
-                    except socket.timeout:
-                        status = ""
+                    status = _read_ssh_channel(out.channel, timeout=15)
                     if "downloaded" not in status.lower():
                         try: ssh.close()
                         except Exception: pass
